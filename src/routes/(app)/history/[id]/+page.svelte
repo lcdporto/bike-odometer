@@ -1,7 +1,7 @@
 <script lang="ts">
 	import TripDetail from '$lib/components/TripDetail.svelte';
-	import { tripsStore, type Trip } from '$lib/stores/trips';
-	import { sensorStore } from '$lib/stores/sensor';
+	import { tripsState, type Trip } from '$lib/stores/trips.svelte';
+	import { sensorState } from '$lib/stores/sensor.svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
@@ -19,24 +19,21 @@
 	}
 
 	onMount(() => {
-		const unsubscribe = sensorStore.subscribe((state) => {
-			wheelSize = state.wheelSize;
-			if (!state.isConnected) {
-				goto('/pairing');
-			}
+			// no-op, keep onMount for platform parity
 		});
 
-		const unsubscribeTrips = tripsStore.subscribe((trips) => {
-			trip = trips.find((t) => t.id === tripId) ?? null;
-			if (!trip && trips.length > 0) {
-				goto('/history');
-			}
-		});
+	$effect(() => {
+		wheelSize = sensorState.wheelSize;
+		if (!sensorState.isConnected) {
+			goto('/pairing');
+		}
+	});
 
-		return () => {
-			unsubscribe();
-			unsubscribeTrips();
-		};
+	$effect(() => {
+		trip = tripsState.find((t) => t.id === tripId) ?? null;
+		if (!trip && tripsState.length > 0) {
+			goto('/history');
+		}
 	});
 </script>
 

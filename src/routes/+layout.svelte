@@ -1,7 +1,7 @@
 <script lang="ts">
 	import './layout.css';
 	import favicon from '$lib/assets/favicon.svg';
-	
+	import { ModeWatcher } from "mode-watcher";
 	let { children } = $props();
 </script>
 
@@ -12,6 +12,7 @@
 	<meta name="theme-color" content="#1a1a2e" />
 </svelte:head>
 
+<ModeWatcher />
 <div class="h-screen max-h-screen">
 	{@render children()}
 </div>

@@ -1,11 +1,11 @@
 <script lang="ts">
 	import TripHistory from '$lib/components/TripHistory.svelte';
-	import { tripsStore, type Trip } from '$lib/stores/trips';
-	import { sensorStore } from '$lib/stores/sensor';
+	import { tripsState, type Trip } from '$lib/stores/trips.svelte';
+	import { sensorState } from '$lib/stores/sensor.svelte';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import { DEFAULT_WHEEL_SIZE } from '$lib/config/wheels';
-	import { ensureMockTripHistory, getWheelCircumference } from '$lib/state/app-state';
+	import { getWheelCircumference, initializeAppDataFromSensors } from '$lib/state/app-state';
 
 	let trips: Trip[] = $state([]);
 	let wheelSize: string = $state(DEFAULT_WHEEL_SIZE);
@@ -17,23 +17,18 @@
 	}
 
 	onMount(() => {
-		const unsubscribe = sensorStore.subscribe((state) => {
-			wheelSize = state.wheelSize;
-			if (!state.isConnected) {
-				goto('/pairing');
-			}
-		});
+			initializeAppDataFromSensors();
+	});
 
-		const unsubscribeTrips = tripsStore.subscribe((t) => {
-			trips = t;
-		});
+	$effect(() => {
+		wheelSize = sensorState.wheelSize;
+		if (!sensorState.isConnected) {
+			goto('/pairing');
+		}
+	});
 
-		ensureMockTripHistory(wheelSize);
-
-		return () => {
-			unsubscribe();
-			unsubscribeTrips();
-		};
+	$effect(() => {
+		trips = tripsState;
 	});
 </script>
 

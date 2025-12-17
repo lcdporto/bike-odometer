@@ -1,19 +1,13 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { onMount } from 'svelte';
-	import { sensorStore } from '$lib/stores/sensor';
+	import { sensorState } from '$lib/stores/sensor.svelte';
 
-	onMount(() => {
-		// Redirect based on connection status
-		const unsubscribe = sensorStore.subscribe((state) => {
-			if (state.isConnected) {
-				goto('/current');
-			} else {
-				goto('/pairing');
-			}
-		});
-
-		return unsubscribe;
+	$effect(() => {
+		if (sensorState.isConnected) {
+			goto('/current');
+		} else {
+			goto('/pairing');
+		}
 	});
 </script>
 

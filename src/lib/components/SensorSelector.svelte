@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
-	import type { Sensor } from '$lib/stores/sensor';
+	import type { Sensor } from '$lib/stores/sensor.svelte';
 	import { Bluetooth, BluetoothSearching, Loader2, Signal, SignalLow, SignalMedium } from '@lucide/svelte';
 	
 	interface Props {

@@ -4,7 +4,7 @@
 	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { ArrowLeft, MapPin, Clock, Gauge } from '@lucide/svelte';
 	import DistanceHistogram from '$lib/components/DistanceHistogram.svelte';
-	import type { Trip } from '$lib/stores/trips';
+	import type { Trip } from '$lib/stores/trips.svelte';
 	
 	interface Props {
 		trip: Trip;

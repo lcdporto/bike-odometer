@@ -1,5 +1,5 @@
-import { writable } from 'svelte/store';
-import type { RotationBucket } from './sensor';
+import type { RotationBucket } from '$lib/stores/sensor.svelte';
+import { SvelteDate } from 'svelte/reactivity';
 
 export interface Trip {
 	id: string;
@@ -13,24 +13,20 @@ export interface Trip {
 	buckets: RotationBucket[];
 }
 
-function createTripsStore() {
-	const { subscribe, set, update } = writable<Trip[]>([]);
+export const tripsState: Trip[] = $state([]);
 
-	return {
-		subscribe,
-		setTrips: (trips: Trip[]) => set(trips),
-		addTrip: (trip: Trip) => update((trips) => [trip, ...trips]),
-		getTripById: (id: string): Trip | undefined => {
-			let trip: Trip | undefined;
-			subscribe((trips) => {
-				trip = trips.find((t) => t.id === id);
-			})();
-			return trip;
-		}
-	};
+export function setTrips(trips: Trip[]) {
+	tripsState.length = 0;
+	tripsState.push(...trips);
 }
 
-export const tripsStore = createTripsStore();
+export function addTrip(trip: Trip) {
+	tripsState.unshift(trip);
+}
+
+export function getTripById(id: string): Trip | undefined {
+	return tripsState.find((t) => t.id === id);
+}
 
 export function generateMockTripHistory(wheelCircumference: number): Trip[] {
 	const trips: Trip[] = [];
@@ -45,7 +41,7 @@ export function generateMockTripHistory(wheelCircumference: number): Trip[] {
 			const timestamp = tripStart + i * 5 * 60 * 1000;
 			const rotations = Math.floor(Math.random() * 60) + 70;
 			buckets.push({
-				time: new Date(timestamp).toLocaleTimeString('en-US', {
+				time: new SvelteDate(timestamp).toLocaleTimeString('en-US', {
 					hour: '2-digit',
 					minute: '2-digit'
 				}),
@@ -59,7 +55,7 @@ export function generateMockTripHistory(wheelCircumference: number): Trip[] {
 		const duration = bucketCount * 5;
 		const avgSpeed = (distance / duration) * 60;
 
-		const startDate = new Date(tripStart);
+		const startDate = new SvelteDate(tripStart);
 		trips.push({
 			id: `trip-${t}`,
 			date: startDate.toLocaleDateString('en-US', {
@@ -68,7 +64,7 @@ export function generateMockTripHistory(wheelCircumference: number): Trip[] {
 				day: 'numeric'
 			}),
 			startTime: startDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-			endTime: new Date(tripStart + duration * 60 * 1000).toLocaleTimeString('en-US', {
+			endTime: new SvelteDate(tripStart + duration * 60 * 1000).toLocaleTimeString('en-US', {
 				hour: '2-digit',
 				minute: '2-digit'
 			}),

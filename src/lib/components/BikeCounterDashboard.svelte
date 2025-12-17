@@ -5,7 +5,7 @@
 	import SensorSelector from './SensorSelector.svelte';
 	import StatCard from './StatCard.svelte';
 	import TripDetail from './TripDetail.svelte';
-	import type { Trip } from '$lib/stores/trips';
+	import type { Trip } from '$lib/stores/trips.svelte';
 	import TripHistory from './TripHistory.svelte';
 	import { WHEEL_SIZES, DEFAULT_WHEEL_SIZE } from '$lib/config/wheels';
 	

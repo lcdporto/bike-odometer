@@ -3,11 +3,11 @@
 	import { CircleDot, Timer, TrendingUp } from '@lucide/svelte';
 	import StatCard from '$lib/components/StatCard.svelte';
 	import DistanceChart from '$lib/components/DistanceChart.svelte';
-	import { sensorStore, type RotationBucket } from '$lib/stores/sensor';
+	import { sensorState, type RotationBucket } from '$lib/stores/sensor.svelte';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { DEFAULT_WHEEL_SIZE } from '$lib/config/wheels';
-	import { ensureMockSensorData, getWheelCircumference } from '$lib/state/app-state';
+	import { getWheelCircumference, initializeAppDataFromSensors } from '$lib/state/app-state';
 
 	let rotationBuckets: RotationBucket[] = $state([]);
 	let wheelSize: string = $state(DEFAULT_WHEEL_SIZE);
@@ -30,18 +30,17 @@
 	}));
 
 	onMount(() => {
-		ensureMockSensorData(wheelSize);
-		const unsubscribe = sensorStore.subscribe((state) => {
-			isConnected = state.isConnected;
-			rotationBuckets = state.rotationBuckets;
-			wheelSize = state.wheelSize;
+			initializeAppDataFromSensors();
+	});
 
-			if (!state.isConnected) {
-				goto('/pairing');
-			}
-		});
+	$effect(() => {
+		isConnected = sensorState.isConnected;
+		rotationBuckets = sensorState.rotationBuckets;
+		wheelSize = sensorState.wheelSize;
 
-		return unsubscribe;
+		if (!sensorState.isConnected) {
+			goto('/pairing');
+		}
 	});
 </script>
 

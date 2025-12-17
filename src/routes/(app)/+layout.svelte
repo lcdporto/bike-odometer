@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Bike, Bluetooth, BarChart3, History } from '@lucide/svelte';
 	import { Select, SelectContent, SelectItem, SelectTrigger } from '$lib/components/ui/select';
-	import { sensorStore } from '$lib/stores/sensor';
+	import { sensorState, disconnectSensor, setWheelSize } from '$lib/stores/sensor.svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { WHEEL_SIZES, DEFAULT_WHEEL_SIZE } from '$lib/config/wheels';
@@ -14,21 +14,18 @@
 	let isHistoryActive = $derived(currentPath.startsWith('/history'));
 
 	$effect(() => {
-		const unsubscribe = sensorStore.subscribe((state) => {
-			connectedSensor = state.connectedSensor;
-			wheelSize = state.wheelSize;
-		});
-		return unsubscribe;
+		connectedSensor = sensorState.connectedSensor;
+		wheelSize = sensorState.wheelSize;
 	});
 
 	$effect(() => {
 		if (wheelSize) {
-			sensorStore.setWheelSize(wheelSize);
+			setWheelSize(wheelSize);
 		}
 	});
 
 	function handleDisconnect() {
-		sensorStore.disconnect();
+		disconnectSensor();
 		goto('/pairing');
 	}
 

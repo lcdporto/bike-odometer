@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Badge } from '$lib/components/ui/badge';
 	import { ChevronRight, MapPin, Clock } from '@lucide/svelte';
-	import type { Trip } from '$lib/stores/trips';
+	import type { Trip } from '$lib/stores/trips.svelte';
 	
 	interface Props {
 		trips: Trip[];
