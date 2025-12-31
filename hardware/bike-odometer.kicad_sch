@@ -2887,6 +2887,12 @@
 		(uuid "5367e193-a566-4f77-afbb-12be17b93f8e")
 	)
 	(junction
+		(at 96.52 62.23)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "60dab29a-cd1e-4100-b562-dd110da93d3a")
+	)
+	(junction
 		(at 238.76 24.13)
 		(diameter 0)
 		(color 0 0 0 0)
@@ -3041,6 +3047,16 @@
 			(type default)
 		)
 		(uuid "27eb070c-0ba5-462f-8eb4-be41389725e7")
+	)
+	(wire
+		(pts
+			(xy 92.71 46.99) (xy 106.68 46.99)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "29d71338-9697-43cf-bd8f-7dfcf976c948")
 	)
 	(wire
 		(pts
@@ -3324,6 +3340,16 @@
 	)
 	(wire
 		(pts
+			(xy 100.33 52.07) (xy 106.68 52.07)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "6e91ee01-c426-45d2-9e40-cb33022d07a7")
+	)
+	(wire
+		(pts
 			(xy 189.23 85.09) (xy 189.23 87.63)
 		)
 		(stroke
@@ -3404,6 +3430,16 @@
 	)
 	(wire
 		(pts
+			(xy 92.71 57.15) (xy 92.71 46.99)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "97aaa843-6fc1-4e4d-ac6b-f05c1ad7ea35")
+	)
+	(wire
+		(pts
 			(xy 168.91 39.37) (xy 162.56 39.37)
 		)
 		(stroke
@@ -3411,6 +3447,16 @@
 			(type default)
 		)
 		(uuid "9c879b2b-e959-47a4-bac5-3321f77b44a4")
+	)
+	(wire
+		(pts
+			(xy 96.52 52.07) (xy 96.52 62.23)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "a28ac20c-9cac-4495-91a4-683b2bec799c")
 	)
 	(wire
 		(pts
@@ -3431,6 +3477,16 @@
 			(type default)
 		)
 		(uuid "a4f50e4b-076f-4211-86a5-88d09927af42")
+	)
+	(wire
+		(pts
+			(xy 100.33 57.15) (xy 100.33 52.07)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "b3b603fd-2df1-4be0-974d-2eacf5d6b549")
 	)
 	(wire
 		(pts
@@ -3584,6 +3640,16 @@
 	)
 	(wire
 		(pts
+			(xy 96.52 62.23) (xy 96.52 63.5)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "e7e1fe8c-b59c-4576-9ead-9d066e33e375")
+	)
+	(wire
+		(pts
 			(xy 207.01 85.09) (xy 212.09 85.09)
 		)
 		(stroke
@@ -3620,7 +3686,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Inductor_SMD:L_0603_1608Metric"
 			(at 168.91 49.53 0)
 			(effects
 				(font
@@ -3639,6 +3705,15 @@
 			)
 		)
 		(property "Description" "Inductor, small symbol"
+			(at 168.91 49.53 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Notes" "120 mA, ±20%, 650 mΩ"
 			(at 168.91 49.53 0)
 			(effects
 				(font
@@ -3691,7 +3766,7 @@
 				(justify right)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Connector_PinHeader_1.27mm:PinHeader_2x05_P1.27mm_Vertical_SMD"
 			(at 195.58 135.89 0)
 			(effects
 				(font
@@ -3785,7 +3860,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_0201_0603Metric"
 			(at 168.91 63.5 0)
 			(effects
 				(font
@@ -3812,6 +3887,15 @@
 				(hide yes)
 			)
 		)
+		(property "Notes" "X6T, ±20%, 2.5 V"
+			(at 168.91 63.5 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "2"
 			(uuid "de302a85-a5ec-48bd-9c0b-21396b4a55e5")
 		)
@@ -3829,7 +3913,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 26.67 27.94 0)
+		(at 34.29 44.45 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -3838,7 +3922,7 @@
 		(fields_autoplaced yes)
 		(uuid "11e3fd4f-476b-4397-8f7f-7feb5451b592")
 		(property "Reference" "#PWR02"
-			(at 26.67 34.29 0)
+			(at 34.29 50.8 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -3847,7 +3931,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 26.67 33.02 0)
+			(at 34.29 49.53 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -3855,7 +3939,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 26.67 27.94 0)
+			(at 34.29 44.45 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -3864,7 +3948,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 26.67 27.94 0)
+			(at 34.29 44.45 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -3873,7 +3957,7 @@
 			)
 		)
 		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
-			(at 26.67 27.94 0)
+			(at 34.29 44.45 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -3919,7 +4003,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Inductor_SMD:L_0201_0603Metric"
 			(at 180.34 85.09 0)
 			(effects
 				(font
@@ -3947,6 +4031,15 @@
 			)
 		)
 		(property "Notes" "LQP03HQ2N7B02"
+			(at 180.34 85.09 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C7216765"
 			(at 180.34 85.09 90)
 			(effects
 				(font
@@ -4025,6 +4118,15 @@
 				(hide yes)
 			)
 		)
+		(property "Notes" "X6S, ±20%, 6.3 V"
+			(at 228.6 27.94 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "2"
 			(uuid "0b7af5a4-a37e-40a5-a357-9b4b8f209f65")
 		)
@@ -4068,7 +4170,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
+		(property "Footprint" "Capacitor_SMD:C_0201_0603Metric"
 			(at 248.92 27.94 0)
 			(effects
 				(font
@@ -4087,6 +4189,15 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor, small symbol"
+			(at 248.92 27.94 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Notes" "X7R, ±10%"
 			(at 248.92 27.94 0)
 			(effects
 				(font
@@ -4138,7 +4249,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
+		(property "Footprint" "Capacitor_SMD:C_0201_0603Metric"
 			(at 238.76 27.94 0)
 			(effects
 				(font
@@ -4157,6 +4268,15 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor, small symbol"
+			(at 238.76 27.94 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Notes" "X7R, ±10%"
 			(at 238.76 27.94 0)
 			(effects
 				(font
@@ -4274,7 +4394,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_0201_0603Metric"
 			(at 196.85 63.5 0)
 			(effects
 				(font
@@ -4293,6 +4413,15 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor, small symbol"
+			(at 196.85 63.5 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Notes" "X6T, ±20%, 2.5 V"
 			(at 196.85 63.5 0)
 			(effects
 				(font
@@ -4476,7 +4605,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_0201_0603Metric"
 			(at 207.01 90.17 0)
 			(effects
 				(font
@@ -4503,6 +4632,24 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC" "C668326"
+			(at 207.01 90.17 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Notes" "NP0, ±0.05 pF, 25 V"
+			(at 207.01 90.17 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "2"
 			(uuid "7d223f54-01b7-4fbf-bc53-b926c1c02417")
 		)
@@ -4513,6 +4660,72 @@
 			(project "bike-odometer"
 				(path "/6526618c-52e1-4317-8eae-3ec35af57f05"
 					(reference "C12")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 96.52 63.5 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "5459b954-953f-4d8b-9fea-774899826b52")
+		(property "Reference" "#PWR017"
+			(at 96.52 69.85 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "GND"
+			(at 96.52 68.58 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 96.52 63.5 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 96.52 63.5 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 96.52 63.5 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "6de096a0-28b4-4adc-91b9-8535b3123464")
+		)
+		(instances
+			(project "bike-odometer"
+				(path "/6526618c-52e1-4317-8eae-3ec35af57f05"
+					(reference "#PWR017")
 					(unit 1)
 				)
 			)
@@ -4889,7 +5102,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
+		(property "Footprint" "Capacitor_SMD:C_0201_0603Metric"
 			(at 259.08 27.94 0)
 			(effects
 				(font
@@ -4908,6 +5121,15 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor, small symbol"
+			(at 259.08 27.94 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Notes" "X7R, ±10%"
 			(at 259.08 27.94 0)
 			(effects
 				(font
@@ -5023,7 +5245,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Inductor_SMD:L_0201_0603Metric"
 			(at 214.63 85.09 0)
 			(effects
 				(font
@@ -5051,6 +5273,15 @@
 			)
 		)
 		(property "Notes" "LQP03HQ3N5B02"
+			(at 214.63 85.09 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C3911055"
 			(at 214.63 85.09 90)
 			(effects
 				(font
@@ -5102,7 +5333,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
+		(property "Footprint" "Capacitor_SMD:C_0201_0603Metric"
 			(at 269.24 27.94 0)
 			(effects
 				(font
@@ -5121,6 +5352,15 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor, small symbol"
+			(at 269.24 27.94 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Notes" "X7R, ±10%"
 			(at 269.24 27.94 0)
 			(effects
 				(font
@@ -5433,7 +5673,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Crystal:Crystal_SMD_2016-4Pin_2.0x1.6mm"
 			(at 78.74 44.45 0)
 			(effects
 				(font
@@ -5452,6 +5692,24 @@
 			)
 		)
 		(property "Description" "Four pin crystal, GND on pins 2 and 4"
+			(at 78.74 44.45 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Notes" "32 MHz, Cl = 8 pF, Total Tol: ±40 ppm"
+			(at 78.74 44.45 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C187794"
 			(at 78.74 44.45 0)
 			(effects
 				(font
@@ -5482,8 +5740,99 @@
 		)
 	)
 	(symbol
+		(lib_id "Device:Crystal_GND24")
+		(at 96.52 57.15 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "9e9f6374-01f5-448b-8a09-747191cb5892")
+		(property "Reference" "Y2"
+			(at 87.122 55.626 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "32.768 kHz"
+			(at 87.122 58.166 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Crystal:Crystal_SMD_2012-2Pin_2.0x1.2mm"
+			(at 96.52 57.15 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 96.52 57.15 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Four pin crystal, GND on pins 2 and 4"
+			(at 96.52 57.15 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Notes" "32.768 kHz, Cl = 9 pF, Total tol: ±20 ppm"
+			(at 96.52 57.15 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C99009"
+			(at 96.52 57.15 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "3"
+			(uuid "2886b377-1903-4103-8890-e690a7da65f3")
+		)
+		(pin "2"
+			(uuid "754932f8-5de1-4ff2-a7bc-b1043555fac7")
+		)
+		(pin "4"
+			(uuid "f9b02a96-b63c-42ae-ab9e-db62d1493e6e")
+		)
+		(pin "1"
+			(uuid "6dd05f02-c08c-4221-96c0-ddb9cb16ad4d")
+		)
+		(instances
+			(project "bike-odometer"
+				(path "/6526618c-52e1-4317-8eae-3ec35af57f05"
+					(reference "Y2")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "power:+BATT")
-		(at 26.67 20.32 0)
+		(at 34.29 36.83 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -5492,7 +5841,7 @@
 		(fields_autoplaced yes)
 		(uuid "a2e4b1dd-d7a6-41eb-906e-1c50e0600048")
 		(property "Reference" "#PWR01"
-			(at 26.67 24.13 0)
+			(at 34.29 40.64 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5501,7 +5850,7 @@
 			)
 		)
 		(property "Value" "+BATT"
-			(at 26.67 15.24 0)
+			(at 34.29 31.75 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5509,7 +5858,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 26.67 20.32 0)
+			(at 34.29 36.83 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5518,7 +5867,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 26.67 20.32 0)
+			(at 34.29 36.83 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5527,7 +5876,7 @@
 			)
 		)
 		(property "Description" "Power symbol creates a global label with name \"+BATT\""
-			(at 26.67 20.32 0)
+			(at 34.29 36.83 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5573,7 +5922,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Inductor_SMD:L_0201_0603Metric"
 			(at 198.12 85.09 0)
 			(effects
 				(font
@@ -5601,6 +5950,15 @@
 			)
 		)
 		(property "Notes" "LQP03HQ3N5B02"
+			(at 198.12 85.09 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C3911055"
 			(at 198.12 85.09 90)
 			(effects
 				(font
@@ -5784,7 +6142,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_0201_0603Metric"
 			(at 184.15 26.67 0)
 			(effects
 				(font
@@ -5803,6 +6161,15 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor, small symbol"
+			(at 184.15 26.67 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Notes" "X7R, 6.3 V"
 			(at 184.15 26.67 0)
 			(effects
 				(font
@@ -5894,7 +6261,7 @@
 	)
 	(symbol
 		(lib_id "Device:Battery_Cell")
-		(at 26.67 25.4 0)
+		(at 34.29 41.91 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -5903,7 +6270,7 @@
 		(fields_autoplaced yes)
 		(uuid "cecc150b-59dc-4909-bc82-ce9f636bbca8")
 		(property "Reference" "BT1"
-			(at 30.48 22.2884 0)
+			(at 38.1 38.7984 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5912,7 +6279,7 @@
 			)
 		)
 		(property "Value" "Battery_Cell"
-			(at 30.48 24.8284 0)
+			(at 38.1 41.3384 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5921,7 +6288,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 26.67 23.876 90)
+			(at 34.29 40.386 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5930,7 +6297,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 26.67 23.876 90)
+			(at 34.29 40.386 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5939,7 +6306,7 @@
 			)
 		)
 		(property "Description" "Single-cell battery"
-			(at 26.67 25.4 0)
+			(at 34.29 41.91 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5989,7 +6356,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_0201_0603Metric"
 			(at 222.25 90.17 0)
 			(effects
 				(font
@@ -6008,6 +6375,15 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor, small symbol"
+			(at 222.25 90.17 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Notes" "C0G, ±0.1 pF, 50 V"
 			(at 222.25 90.17 0)
 			(effects
 				(font
@@ -6125,7 +6501,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_0201_0603Metric"
 			(at 184.15 40.64 0)
 			(effects
 				(font
@@ -6144,6 +6520,15 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor, small symbol"
+			(at 184.15 40.64 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Notes" "X7R, ±10%, 10V"
 			(at 184.15 40.64 0)
 			(effects
 				(font
@@ -6193,7 +6578,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_SMD:R_0201_0603Metric"
 			(at 176.53 116.84 0)
 			(effects
 				(font
@@ -6328,7 +6713,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_0201_0603Metric"
 			(at 189.23 90.17 0)
 			(effects
 				(font
@@ -6347,6 +6732,24 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor, small symbol"
+			(at 189.23 90.17 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C435397"
+			(at 189.23 90.17 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Notes" "NP0, ±0.05 pF, 25 V, High Q"
 			(at 189.23 90.17 0)
 			(effects
 				(font
@@ -6396,7 +6799,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Inductor_SMD:L_0201_0603Metric"
 			(at 182.88 61.468 90)
 			(effects
 				(font
@@ -6475,7 +6878,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_0201_0603Metric"
 			(at 171.45 121.92 0)
 			(effects
 				(font
@@ -6494,6 +6897,15 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor, small symbol"
+			(at 171.45 121.92 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Notes" "C0G, ±0.25 pF, 50 V"
 			(at 171.45 121.92 0)
 			(effects
 				(font
