@@ -1,0 +1,4 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "bike-odometer")(type "KiCad")(uri "${KIPRJMOD}/bike-odometer.kicad_sym")(options "")(descr ""))
+)
