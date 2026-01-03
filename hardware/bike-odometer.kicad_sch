@@ -3272,6 +3272,12 @@
 		(uuid "25a44cb5-a095-4df1-bc03-4c6926236794")
 	)
 	(junction
+		(at 62.23 177.8)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "263b49b1-d4c1-4b88-8f41-4ccc6659bd3c")
+	)
+	(junction
 		(at 34.29 44.45)
 		(diameter 0)
 		(color 0 0 0 0)
@@ -3312,6 +3318,12 @@
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "990153d6-da50-457c-aa69-df0428be210d")
+	)
+	(junction
+		(at 62.23 160.02)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "b09b8142-b574-451e-af4f-55efe77b9985")
 	)
 	(junction
 		(at 248.92 31.75)
@@ -3615,6 +3627,16 @@
 	)
 	(wire
 		(pts
+			(xy 34.29 160.02) (xy 62.23 160.02)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "2e9da867-1434-4cd2-a09f-6e648c51f219")
+	)
+	(wire
+		(pts
 			(xy 182.88 85.09) (xy 189.23 85.09)
 		)
 		(stroke
@@ -3662,6 +3684,16 @@
 			(type default)
 		)
 		(uuid "415cb909-6b86-4499-a33d-f10bd42db045")
+	)
+	(wire
+		(pts
+			(xy 34.29 160.02) (xy 34.29 166.37)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "42b3037b-12a1-4b4b-baa5-b56da19572f3")
 	)
 	(wire
 		(pts
@@ -3965,6 +3997,16 @@
 	)
 	(wire
 		(pts
+			(xy 34.29 177.8) (xy 34.29 171.45)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "c2a20fbc-3035-4dbd-804c-b4fd6604bab7")
+	)
+	(wire
+		(pts
 			(xy 100.33 46.99) (xy 106.68 46.99)
 		)
 		(stroke
@@ -4042,6 +4084,16 @@
 			(type default)
 		)
 		(uuid "d6ce06af-c016-492e-9106-f05039a6cf71")
+	)
+	(wire
+		(pts
+			(xy 62.23 177.8) (xy 34.29 177.8)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "d73e2e3b-3537-4964-bc4d-0a22d7e25367")
 	)
 	(wire
 		(pts
@@ -4197,6 +4249,24 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC" "C114862"
+			(at 168.91 49.53 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Mouser" ""
+			(at 168.91 49.53 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "dce40dfb-757c-42f7-9a95-b02ff74389a1")
 		)
@@ -4260,6 +4330,24 @@
 			)
 		)
 		(property "Description" "Cortex Debug Connector, standard ARM Cortex-M SWD and JTAG interface"
+			(at 195.58 135.89 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C150517"
+			(at 195.58 135.89 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Mouser" ""
 			(at 195.58 135.89 0)
 			(effects
 				(font
@@ -4363,6 +4451,24 @@
 			)
 		)
 		(property "Notes" "X6T, ±20%, 2.5 V"
+			(at 168.91 63.5 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C319184"
+			(at 168.91 63.5 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Mouser" ""
 			(at 168.91 63.5 0)
 			(effects
 				(font
@@ -4523,6 +4629,15 @@
 				(hide yes)
 			)
 		)
+		(property "Mouser" ""
+			(at 180.34 85.09 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "2"
 			(uuid "70737c54-0041-44f6-9991-70ee71b63af5")
 		)
@@ -4566,7 +4681,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
 			(at 228.6 27.94 0)
 			(effects
 				(font
@@ -4594,6 +4709,24 @@
 			)
 		)
 		(property "Notes" "X6S, ±20%, 6.3 V"
+			(at 228.6 27.94 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C2959727"
+			(at 228.6 27.94 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Mouser" ""
 			(at 228.6 27.94 0)
 			(effects
 				(font
@@ -4747,6 +4880,24 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC" "C668346"
+			(at 248.92 27.94 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Mouser" ""
+			(at 248.92 27.94 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "2"
 			(uuid "8d140dfd-040c-4054-bda4-fc00a320c550")
 		)
@@ -4818,6 +4969,24 @@
 			)
 		)
 		(property "Notes" "X7R, ±10%"
+			(at 238.76 27.94 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C668346"
+			(at 238.76 27.94 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Mouser" ""
 			(at 238.76 27.94 0)
 			(effects
 				(font
@@ -4971,6 +5140,24 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC" "C319184"
+			(at 196.85 63.5 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Mouser" ""
+			(at 196.85 63.5 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "2"
 			(uuid "cdc01145-48a9-41ce-bdd2-8b55376ea32f")
 		)
@@ -5033,6 +5220,15 @@
 			)
 		)
 		(property "Description" "Antenna"
+			(at 227.33 78.74 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Mouser" ""
 			(at 227.33 78.74 0)
 			(effects
 				(font
@@ -5191,6 +5387,15 @@
 				(hide yes)
 			)
 		)
+		(property "Mouser" ""
+			(at 207.01 90.17 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "2"
 			(uuid "7d223f54-01b7-4fbf-bc53-b926c1c02417")
 		)
@@ -5253,6 +5458,15 @@
 			)
 		)
 		(property "Description" ""
+			(at 62.23 168.91 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Mouser" " 482-X92216ELQAAC01RE "
 			(at 62.23 168.91 0)
 			(effects
 				(font
@@ -5338,6 +5552,15 @@
 			)
 		)
 		(property "LCSC" "C42458750"
+			(at 134.62 85.09 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Mouser" " 949-NRF54L05-QFAA-R "
 			(at 134.62 85.09 0)
 			(effects
 				(font
@@ -5698,6 +5921,24 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC" "C668346"
+			(at 259.08 27.94 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Mouser" ""
+			(at 259.08 27.94 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "2"
 			(uuid "7d4a876d-f734-4597-ac4e-2660b00e3352")
 		)
@@ -5850,6 +6091,15 @@
 				(hide yes)
 			)
 		)
+		(property "Mouser" ""
+			(at 214.63 85.09 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "2"
 			(uuid "cc39ad62-54bf-4b2f-9273-9942a91e44ba")
 		)
@@ -5921,6 +6171,24 @@
 			)
 		)
 		(property "Notes" "X7R, ±10%"
+			(at 269.24 27.94 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C668346"
+			(at 269.24 27.94 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Mouser" ""
 			(at 269.24 27.94 0)
 			(effects
 				(font
@@ -6278,6 +6546,15 @@
 				(hide yes)
 			)
 		)
+		(property "Mouser" ""
+			(at 100.33 36.83 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "3"
 			(uuid "eca09a47-f677-4c4e-b025-f7b5db8a6741")
 		)
@@ -6369,6 +6646,15 @@
 				(hide yes)
 			)
 		)
+		(property "Mouser" ""
+			(at 100.33 49.53 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "2"
 			(uuid "754932f8-5de1-4ff2-a7bc-b1043555fac7")
 		)
@@ -6451,6 +6737,103 @@
 		)
 	)
 	(symbol
+		(lib_id "Device:C_Small")
+		(at 34.29 168.91 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "aed2c4bd-f1b9-41d5-8783-642ce258d159")
+		(property "Reference" "C14"
+			(at 36.83 167.6462 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "100n"
+			(at 36.83 170.1862 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Capacitor_SMD:C_0201_0603Metric"
+			(at 34.29 168.91 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 34.29 168.91 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Unpolarized capacitor, small symbol"
+			(at 34.29 168.91 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Notes" "X7R, ±10%"
+			(at 34.29 168.91 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C668346"
+			(at 34.29 168.91 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Mouser" ""
+			(at 34.29 168.91 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "2"
+			(uuid "5a09b3fa-5fa4-4728-9229-382752f6a49c")
+		)
+		(pin "1"
+			(uuid "0c1b7a45-1747-44bc-99a0-db7da85fd87e")
+		)
+		(instances
+			(project "bike-odometer"
+				(path "/6526618c-52e1-4317-8eae-3ec35af57f05"
+					(reference "C14")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "Device:L_Small")
 		(at 198.12 85.09 90)
 		(unit 1)
@@ -6513,6 +6896,15 @@
 			)
 		)
 		(property "LCSC" "C3911055"
+			(at 198.12 85.09 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Mouser" ""
 			(at 198.12 85.09 90)
 			(effects
 				(font
@@ -6732,6 +7124,24 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC" "C76941"
+			(at 184.15 26.67 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Mouser" ""
+			(at 184.15 26.67 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "2"
 			(uuid "6b5f77e0-69cf-4f68-876d-bd396bd6a38e")
 		)
@@ -6908,7 +7318,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Battery:BatteryHolder_Keystone_1060_1x2032"
+		(property "Footprint" "Battery:BatteryHolder_Renata_SMTU2032-LF_1x2032"
 			(at 34.29 40.386 90)
 			(effects
 				(font
@@ -6954,6 +7364,24 @@
 			)
 		)
 		(property "Sim.Pins" "1=+ 2=-"
+			(at 34.29 41.91 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C70377"
+			(at 34.29 41.91 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Mouser" ""
 			(at 34.29 41.91 0)
 			(effects
 				(font
@@ -7032,6 +7460,24 @@
 			)
 		)
 		(property "Notes" "C0G, ±0.1 pF, 50 V"
+			(at 222.25 90.17 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C76927"
+			(at 222.25 90.17 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Mouser" ""
 			(at 222.25 90.17 0)
 			(effects
 				(font
@@ -7251,6 +7697,24 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC" "C161488"
+			(at 184.15 40.64 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Mouser" ""
+			(at 184.15 40.64 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "2"
 			(uuid "94e6d7b4-a5f8-4a96-965f-e490d45a0b06")
 		)
@@ -7320,6 +7784,15 @@
 			)
 		)
 		(property "LCSC" "C270365"
+			(at 176.53 116.84 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Mouser" ""
 			(at 176.53 116.84 90)
 			(effects
 				(font
@@ -7481,6 +7954,15 @@
 				(hide yes)
 			)
 		)
+		(property "Mouser" ""
+			(at 189.23 90.17 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "2"
 			(uuid "07ff7e54-2764-4825-a212-5fc985b05ccc")
 		)
@@ -7550,6 +8032,24 @@
 			)
 		)
 		(property "Notes" "120 Ω at 100 MHz, 200 mA, 500 mΩ Max"
+			(at 182.88 59.69 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C97850"
+			(at 182.88 59.69 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Mouser" ""
 			(at 182.88 59.69 90)
 			(effects
 				(font
@@ -7696,6 +8196,24 @@
 			)
 		)
 		(property "Notes" "C0G, ±0.25 pF, 50 V"
+			(at 171.45 121.92 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C76926"
+			(at 171.45 121.92 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Mouser" ""
 			(at 171.45 121.92 0)
 			(effects
 				(font
