@@ -80,17 +80,10 @@ outputs:
       output: PCB.pdf
       pages:
         - layers:
-          - layer: F.Silkscreen
-            description: 'Front Silk'
           - layer: F.Cu
             description: 'Front Copper'
-          - layer: Edge.Cuts
-            description: 'Edge'
-        - layers:
-          - layer: B.Silkscreen
-            description: 'Back Silk'
-          - layer: B.Cu
-            description: 'Back Copper'
+          - layer: F.Silkscreen
+            description: 'Front Silk'
           - layer: Edge.Cuts
             description: 'Edge'
         - layers:
@@ -101,6 +94,13 @@ outputs:
         - layers:
           - layer: In2.Cu
             description: 'Secind Inner Copper'
+          - layer: Edge.Cuts
+            description: 'Edge'
+        - layers:
+          - layer: B.Cu
+            description: 'Back Copper'
+          - layer: B.Silkscreen
+            description: 'Back Silk'
           - layer: Edge.Cuts
             description: 'Edge'
 
