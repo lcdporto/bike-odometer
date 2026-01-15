@@ -1,0 +1,67 @@
+name: Export ECAD
+on:
+  push:
+    paths:
+      - "**.kicad_sch"
+      - "**.kicad_pcb"
+      - ".github/workflows/scripts/config.kibot.yaml"
+      - ".github/workflows/generate-gerbers.yaml"
+  workflow_dispatch:
+  release:
+    types: [ published ]
+    
+jobs:
+  export-ecad:
+    name: Export ECAD
+    runs-on: ubuntu-latest
+    container: ghcr.io/inti-cmnb/kicad9_auto
+      
+    steps:
+    - name: Install dependencies
+      run: |
+            apt update
+            apt install -y zip
+
+    - name: Generate Short SHA Environment Variable
+      run: echo "SHORT_SHA=`echo ${GITHUB_SHA} | cut -c1-8`" >> $GITHUB_ENV
+
+    - name: Checkout Repository
+      uses: actions/checkout@v2
+        
+    - name: Extract branch name
+      shell: bash
+      run: echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/})"
+      id: extract_branch            
+
+    - name: Update the PCBs with the git hash.
+      if: steps.extract_branch.outputs.branch != env.main_branch
+      run: |
+        export COMMIT=$(git rev-parse --short HEAD)
+        echo "COMMIT = ${COMMIT}"
+        sed -i "s!<<hash>>!${COMMIT}!" hardware/bike-odometer.kicad_pcb
+
+    - name: Generate Export Files
+      run: |
+        cd hardware
+        rm -rf bike-odometer/
+        kibot -c ../.github/workflows/scripts/config.kibot.yaml -e bike-odometer.kicad_sch -b bike-odometer.kicad_pcb -d bike-odometer
+
+    - name: Zip Export Files for Release  
+      run: |
+        cd hardware
+        zip -r -j bike-odometer-${{ github.event.release.tag_name }}.zip bike-odometer/
+
+    - name: Upload Export Files as Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: bike-odometer.zip
+        path: hardware/bike-odometer/
+        if-no-files-found: error
+        retention-days: 60
+
+    - name: Upload Artifacts to Release
+      uses: softprops/action-gh-release@v1
+      if: github.event_name == 'release'
+      with:
+        files: |
+          hardware/bike-odometer-${{ github.event.release.tag_name }}.zip
