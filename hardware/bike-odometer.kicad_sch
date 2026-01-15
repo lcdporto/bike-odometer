@@ -7247,7 +7247,7 @@
 				(justify right)
 			)
 		)
-		(property "Value" "DRV5034DG"
+		(property "Value" "DRV5032DG"
 			(at 58.42 168.9099 0)
 			(effects
 				(font
@@ -7275,6 +7275,15 @@
 			)
 		)
 		(property "Description" "Digital,±3.4-mT, 80 Hz, 1.65-5.5V, X2SON"
+			(at 64.77 167.64 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C41530655"
 			(at 64.77 167.64 0)
 			(effects
 				(font
