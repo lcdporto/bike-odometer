@@ -16,6 +16,8 @@ filters:
       - ["^SO-", 270.0]
       - ["^HTSSOP-", 270.0]
       - ["^SSOP-", 270.0]
+      - ["^MSOP-", 270.0]
+      - ["^USB_C_Receptacle_Palconn", 180.0]
 
 global:
   variant: default
@@ -32,7 +34,6 @@ variants:
     pre_transform: fix_rotation
 
 preflight:
-  # Disable ERC for now while GPereira updates these items.
   run_erc: false
   update_xml: true
   # Disable DRC for now while GPereira updates these items.
@@ -92,6 +93,16 @@ outputs:
             description: 'Back Copper'
           - layer: Edge.Cuts
             description: 'Edge'
+        - layers:
+          - layer: In1.Cu
+            description: 'First Inner Copper'
+          - layer: Edge.Cuts
+            description: 'Edge'
+        - layers:
+          - layer: In2.Cu
+            description: 'Secind Inner Copper'
+          - layer: Edge.Cuts
+            description: 'Edge'
 
   - name: 'gerbers'
     comment: "Gerbers for the board house"
@@ -124,6 +135,10 @@ outputs:
       # When Moving to Four Layer, Set G2L and G3L as the suffixes
       - layer: F.Cu
         suffix: GTL
+      - layer: In1.Cu
+        suffix: G2L
+      - layer: In2.Cu
+        suffix: G3L
       - layer: B.Cu
         suffix: GBL
       - layer: F.SilkS
@@ -210,7 +225,29 @@ outputs:
         - id: Rot
           name: Rotation
 
+  - name: 'pick_and_place_jlc_with_connectors'
+    comment: 'Pick and place file, JLC style with connectors'
+    type: position
+    options:
+      output: '%f_cpl_jlc_conn.%x'
+      format: CSV
+      units: millimeters
+      separate_files_for_front_and_back: false
+      only_smd: false
+      variant: jlcpcb
+      columns:
+        - id: Ref
+          name: Designator
+        - id: PosX
+          name: "Mid X"
+        - id: PosY
+          name: "Mid Y"
+        - id: Side
+          name: Layer
+        - id: Rot
+          name: Rotation            
+
   - name: 'step_file'
     comment: 'STEP file generation'
-    type: export_3d
+    type: step
     dir: .
