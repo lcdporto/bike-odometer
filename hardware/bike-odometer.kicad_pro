@@ -58,7 +58,56 @@
           "width": 0.0
         }
       ],
-      "drc_exclusions": [],
+      "drc_exclusions": [
+        [
+          "courtyards_overlap|152145000|94675000|b211f4be-9d8b-4e16-94ae-e0ab82d682e8|f830fefe-abae-436e-bdf7-30f630b05d7e",
+          ""
+        ],
+        [
+          "courtyards_overlap|152455000|94675000|59d292ab-5931-49c6-a2b7-f78e6b0ec177|b211f4be-9d8b-4e16-94ae-e0ab82d682e8",
+          ""
+        ],
+        [
+          "courtyards_overlap|152940000|91804999|1995eaec-dca7-4e17-907b-ac9a007fc689|3703ab5f-b251-4703-bb6c-b05936c5c0f9",
+          ""
+        ],
+        [
+          "courtyards_overlap|155685000|86559999|2461d800-732e-49e7-9673-a9f1bc627fc2|c91c751b-243a-42a5-9058-b0ad5bf13792",
+          ""
+        ],
+        [
+          "courtyards_overlap|156050562|95068139|4579bb1b-4920-4f9c-a44e-969a804cb18a|d5e75e9b-ec69-46d9-8db2-f39d75f907ed",
+          ""
+        ],
+        [
+          "courtyards_overlap|156202383|86559999|2461d800-732e-49e7-9673-a9f1bc627fc2|6757f6e3-b5a5-401c-86fd-868d239967b4",
+          ""
+        ],
+        [
+          "courtyards_overlap|156235000|85284296|6757f6e3-b5a5-401c-86fd-868d239967b4|84176753-6aba-4c02-b3ac-32fc56e02f4d",
+          ""
+        ],
+        [
+          "courtyards_overlap|156255000|83460963|b88f2bb3-0067-486c-adb7-2fec38c7000b|fed6070e-3041-49fa-9f10-4245cb8c4fc7",
+          ""
+        ],
+        [
+          "courtyards_overlap|156257482|86559999|2461d800-732e-49e7-9673-a9f1bc627fc2|4c693aa5-e6d8-44b5-ada3-c6e577db5a22",
+          ""
+        ],
+        [
+          "courtyards_overlap|156891543|84729408|84176753-6aba-4c02-b3ac-32fc56e02f4d|fed6070e-3041-49fa-9f10-4245cb8c4fc7",
+          ""
+        ],
+        [
+          "courtyards_overlap|156892383|86555000|4c693aa5-e6d8-44b5-ada3-c6e577db5a22|6757f6e3-b5a5-401c-86fd-868d239967b4",
+          ""
+        ],
+        [
+          "courtyards_overlap|156915562|87305095|1ad8942a-43fb-4057-a7a2-ee1678d4c1c2|4c693aa5-e6d8-44b5-ada3-c6e577db5a22",
+          ""
+        ]
+      ],
       "meta": {
         "version": 2
       },
@@ -221,8 +270,8 @@
           "drill": 0.0
         },
         {
-          "diameter": 0.35,
-          "drill": 0.15
+          "diameter": 0.45,
+          "drill": 0.2
         }
       ],
       "zones_allow_external_fillets": false
@@ -498,8 +547,8 @@
         "priority": 0,
         "schematic_color": "rgba(0, 0, 0, 0.000)",
         "track_width": 0.25,
-        "via_diameter": 0.35,
-        "via_drill": 0.15
+        "via_diameter": 0.45,
+        "via_drill": 0.2
       }
     ],
     "meta": {
