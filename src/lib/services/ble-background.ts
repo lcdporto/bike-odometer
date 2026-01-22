@@ -35,7 +35,7 @@ function inchesToWheelSizeValue(inches: number): string {
 function toRotationBucket(trip: SensorDescriptor['trips'][0], idx: number) {
 	const timestamp = trip.startDate + idx * 5 * 60 * 1000;
 	return {
-		time: new Date(timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+		time: new Date(timestamp).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }),
 		rotations: trip.buckets[idx] || 0,
 		timestamp
 	};
@@ -57,8 +57,8 @@ function toTrip(trip: SensorDescriptor['trips'][0], wheelCircumference: number) 
 			month: 'short',
 			day: 'numeric'
 		}),
-		startTime: startDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-		endTime: endDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+		startTime: startDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }),
+		endTime: endDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }),
 		distance,
 		duration,
 		avgSpeed,

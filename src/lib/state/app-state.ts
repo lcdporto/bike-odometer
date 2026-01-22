@@ -4,7 +4,9 @@ import { setTrips, tripsState } from '$lib/stores/trips.svelte';
 
 export function getWheelCircumference(size: string): number {
 	const parsed = Number.parseInt(size, 10);
-	return Number.isFinite(parsed) ? (parsed * Math.PI) / 1000 : 0;
+	// Convert diameter in inches to circumference in meters
+	// diameter (inches) × π × 0.0254 (inches to meters)
+	return Number.isFinite(parsed) ? (parsed * Math.PI * 0.0254) : 0;
 }
 
 /**

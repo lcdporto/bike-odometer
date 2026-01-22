@@ -13,11 +13,27 @@
 	
 	let { trip, wheelCircumference, onBack }: Props = $props();
 	
+	// Helper to convert 12h to 24h format for any legacy data
+	function ensureTime24h(timeStr: string): string {
+		// If already in 24h format (no AM/PM), return as-is
+		if (!timeStr.includes('AM') && !timeStr.includes('PM')) {
+			return timeStr;
+		}
+		// Parse and reformat to 24h
+		const match = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
+		if (!match) return timeStr;
+		let [, hours, minutes, period] = match;
+		let h = parseInt(hours);
+		if (period.toUpperCase() === 'PM' && h !== 12) h += 12;
+		if (period.toUpperCase() === 'AM' && h === 12) h = 0;
+		return `${h.toString().padStart(2, '0')}:${minutes}`;
+	}
+	
 	let distancePerBucket = $derived(
 		trip.buckets.map((bucket) => {
 			const distance = (bucket.rotations * wheelCircumference) / 1000;
 			return {
-				time: bucket.time,
+				time: ensureTime24h(bucket.time),
 				distance: Number.parseFloat((distance * 1000).toFixed(0))
 			};
 		})

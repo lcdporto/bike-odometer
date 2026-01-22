@@ -164,10 +164,17 @@ async function loadTripsForSensor(sensorId: string): Promise<Trip[]> {
 			[row.id]
 		);
 		const formattedBuckets = buckets.map((b) => ({
-			time: new Date(b.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+			time: new Date(b.timestamp).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }),
 			rotations: b.rotations,
 			timestamp: b.timestamp
 		}));
+
+		// Recalculate distance using correct wheel circumference formula
+		// wheel_size is diameter in inches, convert to circumference in meters
+		const wheelDiameterInches = Number.parseFloat(row.wheel_size);
+		const wheelCircumferenceMeters = wheelDiameterInches * Math.PI * 0.0254;
+		const correctedDistance = (row.total_rotations * wheelCircumferenceMeters) / 1000; // km
+		const correctedAvgSpeed = row.duration > 0 ? (correctedDistance / row.duration) * 60 : 0;
 
 		trips.push({
 			id: row.id,
@@ -176,14 +183,15 @@ async function loadTripsForSensor(sensorId: string): Promise<Trip[]> {
 				month: 'short',
 				day: 'numeric'
 			}),
-			startTime: new Date(row.start_date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-			endTime: new Date(row.start_date + row.duration * 60 * 1000).toLocaleTimeString('en-US', {
+			startTime: new Date(row.start_date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }),
+			endTime: new Date(row.start_date + row.duration * 60 * 1000).toLocaleTimeString('en-GB', {
 				hour: '2-digit',
-				minute: '2-digit'
+				minute: '2-digit',
+				hour12: false
 			}),
-			distance: row.distance,
+			distance: correctedDistance,
 			duration: row.duration,
-			avgSpeed: row.avg_speed,
+			avgSpeed: correctedAvgSpeed,
 			totalRotations: row.total_rotations,
 			buckets: formattedBuckets
 		});

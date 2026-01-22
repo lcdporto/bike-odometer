@@ -77,6 +77,37 @@
 				latestTripBuckets: sensorData.trips[0]?.buckets.length || 0
 			});
 			
+			// Log all trips retrieved
+			console.log('===== TRIPS RETRIEVED =====');
+			console.log(`Total trips: ${sensorData.trips.length}`);
+			// Calculate wheel circumference in meters from diameter in inches
+			const wheelDiameterInches = parseFloat(sensorData.wheelSize);
+			const wheelCircumferenceMeters = (wheelDiameterInches * Math.PI * 0.0254);
+			console.log(`Wheel size: ${wheelDiameterInches}" (circumference: ${wheelCircumferenceMeters.toFixed(3)} m)`);
+			
+			sensorData.trips.forEach((trip, tripIndex) => {
+				console.log(`\nTrip ${tripIndex + 1}:`, {
+					id: trip.id,
+					startTime: trip.startTime,
+					endTime: trip.endTime,
+					totalRotations: trip.totalRotations,
+					totalDistance: `${trip.distance.toFixed(3)} km`,
+					bucketCount: trip.buckets.length
+				});
+				
+				// Log bucket details with distance and wheel spins
+				console.log(`  Buckets for Trip ${tripIndex + 1}:`);
+				trip.buckets.forEach((bucket, bucketIndex) => {
+					const distanceInBucketMeters = bucket.rotations * wheelCircumferenceMeters;
+					console.log(`    Bucket ${bucketIndex + 1}:`, {
+						timestamp: new Date(bucket.timestamp).toISOString(),
+						wheelSpins: bucket.rotations,
+						distance: `${distanceInBucketMeters.toFixed(2)} m (${(distanceInBucketMeters / 1000).toFixed(3)} km)`
+					});
+				});
+			});
+			console.log('===========================');
+			
 			// Apply to state
 			setWheelSize(sensorData.wheelSize);
 			connectSensor(sensor);

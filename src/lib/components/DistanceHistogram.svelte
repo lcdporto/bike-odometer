@@ -122,6 +122,15 @@
   } satisfies Chart.ChartConfig;
 
   let context = $state<ChartContextValue>();
+	
+	// Calculate tick interval based on data length to avoid overlapping labels
+	// Show ~5-8 labels maximum
+	let tickInterval = $derived(Math.max(1, Math.ceil(chartData.length / 6)));
+	
+	// Create a map of times to show
+	let showTimeLabels = $derived(new Set(
+		chartData.filter((_, index) => index % tickInterval === 0).map(d => d.time)
+	));
 </script>
 
 <Card.Root>
@@ -154,7 +163,12 @@
             },
           },
           highlight: { area: { fill: "none" } },
-					xAxis: { format: (d:string) => d },
+					xAxis: { 
+						format: (d: string) => {
+							// Only show labels for selected times to prevent overlap
+							return showTimeLabels.has(d) ? d : '';
+						}
+					},
         }}
       >
         {#snippet tooltip()}
