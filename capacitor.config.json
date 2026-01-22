@@ -6,7 +6,8 @@
 		"CapacitorHttp": {},
 		"Keyboard": {
 			"resize": "none"
-		}
+		},
+		"CapacitorSQLite": {}
 	},
 	"ios": {
 		"scheme": "bikesensor"

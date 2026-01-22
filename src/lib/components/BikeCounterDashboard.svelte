@@ -5,122 +5,68 @@
 	import SensorSelector from './SensorSelector.svelte';
 	import StatCard from './StatCard.svelte';
 	import TripDetail from './TripDetail.svelte';
+	import DistanceChart from './DistanceChart.svelte';
 	import type { Trip } from '$lib/stores/trips.svelte';
 	import TripHistory from './TripHistory.svelte';
 	import { WHEEL_SIZES, DEFAULT_WHEEL_SIZE } from '$lib/config/wheels';
-	
-	interface Sensor {
-		id: string;
-		name: string;
-		signalStrength: number;
-	}
-	
-	interface RotationBucket {
-		time: string;
-		rotations: number;
-		timestamp: number;
-	}
+	import { sensorState, disconnectSensor, setWheelSize } from '$lib/stores/sensor.svelte';
+	import { tripsState } from '$lib/stores/trips.svelte';
+	import { initializeAppDataFromSensors } from '$lib/state/app-state';
+	import type { Sensor } from '$lib/stores/sensor.svelte';
 	
 	type View = 'pairing' | 'current' | 'history' | 'trip-detail';
 	
-	let wheelSize = $state(DEFAULT_WHEEL_SIZE);
-	let rotationBuckets = $state<RotationBucket[]>([]);
-	let isConnected = $state(false);
-	let connectedSensor = $state<Sensor | null>(null);
 	let view = $state<View>('pairing');
 	let selectedTrip = $state<Trip | null>(null);
 	
-	let wheelCircumference = $derived((Number.parseInt(wheelSize) * Math.PI) / 1000);
-	let totalRotations = $derived(rotationBuckets.reduce((sum, bucket) => sum + bucket.rotations, 0));
+	let wheelCircumference = $derived((Number.parseInt(sensorState.wheelSize) * Math.PI) / 1000);
+	
+	// Calculate totals from ALL trips, not just rotation buckets
+	let allBuckets = $derived.by(() => {
+		return tripsState.flatMap(trip => trip.buckets);
+	});
+	
+	let totalRotations = $derived(allBuckets.reduce((sum, bucket) => sum + bucket.rotations, 0));
 	let totalDistance = $derived((totalRotations * wheelCircumference) / 1000);
-	let totalMinutes = $derived(rotationBuckets.length * 5);
+	let totalMinutes = $derived(allBuckets.length * 5);
 	
-	let tripHistory = $derived(generateMockTripHistory(wheelCircumference));
-
-	function generateMockRotations() {
-		const baseRotations = Math.floor(Math.random() * 50) + 80;
-		const variation = Math.floor(Math.random() * 40) - 20;
-		return Math.max(0, baseRotations + variation);
-	}
-	
-	function generateMockTripHistory(wheelCircumference: number): Trip[] {
-		const trips: Trip[] = [];
-		const now = Date.now();
-		
-		for (let t = 0; t < 5; t++) {
-			const tripStart = now - (t + 1) * 24 * 60 * 60 * 1000 - Math.random() * 12 * 60 * 60 * 1000;
-			const bucketCount = Math.floor(Math.random() * 8) + 4;
-			const buckets: RotationBucket[] = [];
-			
-			for (let i = 0; i < bucketCount; i++) {
-				const timestamp = tripStart + i * 5 * 60 * 1000;
-				const rotations = Math.floor(Math.random() * 60) + 70;
-				buckets.push({
-					time: new Date(timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-					rotations,
-					timestamp
-				});
-			}
-			
-			const totalRotations = buckets.reduce((sum, b) => sum + b.rotations, 0);
-			const distance = (totalRotations * wheelCircumference) / 1000;
-			const duration = bucketCount * 5;
-			const avgSpeed = (distance / duration) * 60;
-			
-			const startDate = new Date(tripStart);
-			trips.push({
-				id: `trip-${t}`,
-				date: startDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
-				startTime: startDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-				endTime: new Date(tripStart + duration * 60 * 1000).toLocaleTimeString('en-US', {
-					hour: '2-digit',
-					minute: '2-digit'
-				}),
-				distance,
-				duration,
-				avgSpeed,
-				totalRotations,
-				buckets
-			});
-		}
-		
-		return trips;
-	}
-	
+	// Log state for debugging
 	$effect(() => {
-		if (!isConnected) return;
+		console.log('BikeCounterDashboard state:', {
+			isConnected: sensorState.isConnected,
+			sensor: sensorState.connectedSensor?.name,
+			wheelSize: sensorState.wheelSize,
+			tripCount: tripsState.length,
+			bucketCount: allBuckets.length,
+			totalRotations,
+			totalDistance,
+			totalMinutes
+		});
+	});
+	
+	// Calculate cumulative distance data for the chart from all trips
+	let cumulativeDistanceData = $derived.by(() => {
+		let cumulative = 0;
+		const allBucketsWithTrip = tripsState.flatMap(trip => 
+			trip.buckets.map(bucket => ({
+				...bucket,
+				tripId: trip.id
+			}))
+		).sort((a, b) => a.timestamp - b.timestamp); // Sort by timestamp to ensure chronological order
 		
-		const initialBuckets: RotationBucket[] = [];
-		const now = Date.now();
-		
-		for (let i = 5; i >= 0; i--) {
-			const timestamp = now - i * 5 * 60 * 1000;
-			const date = new Date(timestamp);
-			initialBuckets.push({
-				time: date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-				rotations: generateMockRotations(),
-				timestamp
-			});
-		}
-		
-		rotationBuckets = initialBuckets;
-		
-		const interval = setInterval(() => {
-			const timestamp = Date.now();
-			const date = new Date(timestamp);
-			const newRotations = generateMockRotations();
-			
-			rotationBuckets = [
-				...rotationBuckets.slice(-11),
-				{
-					time: date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-					rotations: newRotations,
-					timestamp
-				}
-			];
-		}, 3000);
-		
-		return () => clearInterval(interval);
+		return allBucketsWithTrip.map((bucket) => {
+			const distanceThisBucket = (bucket.rotations * wheelCircumference) / 1000;
+			cumulative += distanceThisBucket;
+			return {
+				time: bucket.time,
+				distance: cumulative
+			};
+		});
+	});
+	
+	// Initialize app data from sensors on mount
+	$effect(() => {
+		initializeAppDataFromSensors();
 	});
 	
 	function handleTripSelect(trip: Trip) {
@@ -129,15 +75,16 @@
 	}
 	
 	function handleSensorConnect(sensor: Sensor) {
-		connectedSensor = sensor;
-		isConnected = true;
 		view = 'current';
 	}
 	
 	function handleDisconnect() {
-		isConnected = false;
-		connectedSensor = null;
+		disconnectSensor();
 		view = 'pairing';
+	}
+	
+	function handleWheelSizeChange(newSize: string) {
+		setWheelSize(newSize);
 	}
 </script>
 
@@ -158,14 +105,14 @@
 						class="flex items-center gap-1.5 text-xs text-primary hover:underline"
 					>
 						<Bluetooth class="h-3 w-3" />
-						{connectedSensor?.name}
+						{sensorState.connectedSensor?.name || 'Unknown'}
 					</button>
 				</div>
 			</div>
 			
-			<Select type="single" bind:value={wheelSize}>
+			<Select type="single" value={sensorState.wheelSize} onValueChange={handleWheelSizeChange}>
 				<SelectTrigger class="w-[100px] bg-card text-sm">
-					{WHEEL_SIZES.find(s => s.value === wheelSize)?.label || 'Wheel'}
+					{WHEEL_SIZES.find(s => s.value === sensorState.wheelSize)?.label || 'Wheel'}
 				</SelectTrigger>
 				<SelectContent>
 					{#each WHEEL_SIZES as size (size.value)}
@@ -191,15 +138,7 @@
 					</div>
 					
 					<div class="flex-1 min-h-0">
-						<Card class="flex flex-col bg-card border-border h-full">
-							<CardHeader class="pb-2">
-								<CardTitle class="text-sm text-foreground">Cumulative Distance</CardTitle>
-								<CardDescription class="text-xs text-muted-foreground">Total distance over time (km)</CardDescription>
-							</CardHeader>
-							<CardContent class="flex-1 min-h-0 pb-4 flex items-center justify-center">
-								<p class="text-muted-foreground text-sm">Chart placeholder</p>
-							</CardContent>
-						</Card>
+						<DistanceChart data={cumulativeDistanceData} class="h-full" />
 					</div>
 					
 					<div class="flex items-center justify-center gap-2 text-xs text-muted-foreground">
@@ -208,7 +147,7 @@
 					</div>
 				</div>
 			{:else if view === 'history'}
-				<TripHistory trips={tripHistory} onTripSelect={handleTripSelect} />
+				<TripHistory trips={tripsState} onTripSelect={handleTripSelect} />
 			{:else if view === 'trip-detail' && selectedTrip}
 				<TripDetail
 					trip={selectedTrip}

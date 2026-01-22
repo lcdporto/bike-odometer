@@ -1,0 +1,202 @@
+import { initializeBLE, scanForESP32Sensors, readSensorDescriptor } from './ble';
+import { saveSensorDescriptor } from '$lib/persistence/sqlite';
+import type { Sensor } from '$lib/stores/sensor.svelte';
+import type { BleDevice } from '@capacitor-community/bluetooth-le';
+import { updateConnectedDevice, removeStaleDevices } from '$lib/stores/ble-devices.svelte';
+
+const SCAN_INTERVAL = 10000; // 10 seconds between scans
+const SCAN_DURATION = 5000; // 5 seconds per scan
+
+// Convert RSSI (signal strength in dBm, typically -100 to -30) to percentage
+function rssiToPercentage(rssi: number): number {
+	const MIN_RSSI = -100;
+	const MAX_RSSI = -30;
+	const clampedRssi = Math.max(MIN_RSSI, Math.min(MAX_RSSI, rssi));
+	return Math.round(((clampedRssi - MIN_RSSI) / (MAX_RSSI - MIN_RSSI)) * 100);
+}
+
+type SensorDescriptor = {
+	wheelSize: number;
+	trips: Array<{
+		id: number;
+		startDate: number;
+		buckets: number[];
+	}>;
+};
+
+let isScanning = false;
+let scanInterval: number | null = null;
+const discoveredDevices = new Set<string>();
+
+function inchesToWheelSizeValue(inches: number): string {
+	return String(inches || 26);
+}
+
+function toRotationBucket(trip: SensorDescriptor['trips'][0], idx: number) {
+	const timestamp = trip.startDate + idx * 5 * 60 * 1000;
+	return {
+		time: new Date(timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+		rotations: trip.buckets[idx] || 0,
+		timestamp
+	};
+}
+
+function toTrip(trip: SensorDescriptor['trips'][0], wheelCircumference: number) {
+	const buckets = trip.buckets.map((_, idx) => toRotationBucket(trip, idx));
+	const totalRotations = buckets.reduce((sum, b) => sum + b.rotations, 0);
+	const distance = (totalRotations * wheelCircumference) / 1000;
+	const duration = buckets.length * 5;
+	const avgSpeed = duration > 0 ? (distance / duration) * 60 : 0;
+	const startDate = new Date(trip.startDate);
+	const endDate = new Date(trip.startDate + duration * 60 * 1000);
+
+	return {
+		id: `trip-${trip.id}`,
+		date: startDate.toLocaleDateString('en-US', {
+			weekday: 'short',
+			month: 'short',
+			day: 'numeric'
+		}),
+		startTime: startDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+		endTime: endDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+		distance,
+		duration,
+		avgSpeed,
+		totalRotations,
+		buckets
+	};
+}
+
+/**
+ * Process a discovered sensor by reading its data and saving to DB
+ */
+async function processSensor(deviceId: string, deviceName: string, strength: number, device: BleDevice) {
+	try {
+		console.log(`Processing sensor: ${deviceName} (${deviceId})`);
+		
+		// Read sensor descriptor from BLE
+		const descriptor = await readSensorDescriptor<SensorDescriptor>(device);
+		console.log('Sensor descriptor received:', descriptor);
+		
+		// Convert to app format
+		const wheelSize = inchesToWheelSizeValue(descriptor.wheelSize);
+		const wheelCircumference = (Number.parseInt(wheelSize) * Math.PI) / 1000;
+		
+		const sensor: Sensor = {
+			id: deviceId,
+			name: deviceName,
+			signalStrength: strength
+		};
+		
+		const trips = descriptor.trips.map((trip) => toTrip(trip, wheelCircumference));
+		
+		// Save to database
+		await saveSensorDescriptor(sensor, wheelSize, trips);
+		console.log(`Sensor ${deviceName} data saved to DB`);
+		
+		// Mark as discovered so we don't process it again
+		discoveredDevices.add(deviceId);
+	} catch (error) {
+		console.error(`Failed to process sensor ${deviceName}:`, error);
+	}
+}
+
+/**
+ * Perform a single scan iteration
+ */
+async function performScan() {
+	if (isScanning) {
+		console.log('Scan already in progress, skipping...');
+		return;
+	}
+	
+	try {
+		isScanning = true;
+		console.log('Starting BLE scan...');
+		
+		const sensors = await scanForESP32Sensors(SCAN_DURATION);
+		console.log(`Found ${sensors.length} ESP32 sensors`);
+		
+		// Process new sensors
+		for (const sensor of sensors) {
+			if (!discoveredDevices.has(sensor.macAddress)) {
+				console.log(`New sensor discovered: ${sensor.name}`);
+				// Process in background, don't wait
+				processSensor(sensor.macAddress, sensor.name, sensor.strength, sensor.device).catch((err) => {
+					console.error('Failed to process sensor:', err);
+				});
+			}
+			
+			// Update connected device in store
+			updateConnectedDevice({
+				id: sensor.macAddress,
+				name: sensor.name,
+				signalStrength: rssiToPercentage(sensor.strength)
+			});
+		}
+		
+		// Remove stale devices (not seen in last 30 seconds)
+		removeStaleDevices(30000);
+	} catch (error) {
+		console.error('Scan failed:', error);
+	} finally {
+		isScanning = false;
+	}
+}
+
+/**
+ * Start the background BLE scanning service
+ */
+export async function startBackgroundScanning() {
+	if (scanInterval !== null) {
+		console.log('Background scanning already running');
+		return;
+	}
+	
+	try {
+		// Initialize BLE
+		await initializeBLE();
+		console.log('BLE initialized, starting background scanning...');
+		
+		// Perform initial scan
+		await performScan();
+		
+		// Set up interval for continuous scanning
+		scanInterval = window.setInterval(() => {
+			performScan().catch((err) => {
+				console.error('Background scan error:', err);
+			});
+		}, SCAN_INTERVAL);
+		
+		console.log('Background scanning started');
+	} catch (error) {
+		console.error('Failed to start background scanning:', error);
+		throw error;
+	}
+}
+
+/**
+ * Stop the background BLE scanning service
+ */
+export function stopBackgroundScanning() {
+	if (scanInterval !== null) {
+		clearInterval(scanInterval);
+		scanInterval = null;
+		console.log('Background scanning stopped');
+	}
+}
+
+/**
+ * Check if background scanning is active
+ */
+export function isBackgroundScanningActive(): boolean {
+	return scanInterval !== null;
+}
+
+/**
+ * Reset discovered devices (useful for testing or manual rescan)
+ */
+export function resetDiscoveredDevices() {
+	discoveredDevices.clear();
+	console.log('Discovered devices cleared');
+}

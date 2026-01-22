@@ -1,10 +1,9 @@
 <script lang="ts">
-	import { Button } from '$lib/components/ui/button';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
-	import { ArrowLeft, MapPin, Clock, Gauge } from '@lucide/svelte';
 	import DistanceHistogram from '$lib/components/DistanceHistogram.svelte';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
 	import type { Trip } from '$lib/stores/trips.svelte';
+	import { ArrowLeft, Clock, Gauge, MapPin } from '@lucide/svelte';
 	
 	interface Props {
 		trip: Trip;

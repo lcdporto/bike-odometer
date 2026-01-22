@@ -63,7 +63,6 @@
 								const i = Math.round(Number(v));
 								return chartData[i]?.time ?? '';
 							},
-							padding: 6
 						},
 						yAxis: {
 							format: (v: number) => `${Number(v).toFixed(2)} km`

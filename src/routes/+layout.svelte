@@ -2,7 +2,22 @@
 	import './layout.css';
 	import favicon from '$lib/assets/favicon.svg';
 	import { ModeWatcher } from "mode-watcher";
+	import { onMount } from 'svelte';
+	import { startBackgroundScanning, stopBackgroundScanning } from '$lib/services/ble-background';
+	
 	let { children } = $props();
+	
+	onMount(() => {
+		// Start background BLE scanning
+		startBackgroundScanning().catch((err) => {
+			console.error('Failed to start background scanning:', err);
+		});
+		
+		// Cleanup on unmount
+		return () => {
+			stopBackgroundScanning();
+		};
+	});
 </script>
 
 <svelte:head>

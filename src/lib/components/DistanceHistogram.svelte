@@ -105,34 +105,17 @@
   import * as Card from "$lib/components/ui/card/index.js";
   import { cubicInOut } from "svelte/easing";
 
-  // const chartData = [
-  //   { month: "January", desktop: 186 },
-  //   { month: "February", desktop: 305 },
-  //   { month: "March", desktop: 237 },
-  //   { month: "April", desktop: 73 },
-  //   { month: "May", desktop: 209 },
-  //   { month: "June", desktop: 214 },
-  // ];
 	interface DistanceData {
 		time: string;
 		distance: number;
 	}
 
 	interface Props {
-		data?: DistanceData[];
+		data: DistanceData[];
 		class?: string;
 	}
 
-	const { data: _incoming, class: className }: Props = $props();
-
-	const chartData: DistanceData[] = [
-		{ time: '09:00', distance: 120 },
-		{ time: '09:05', distance: 180 },
-		{ time: '09:10', distance: 90 },
-		{ time: '09:15', distance: 210 },
-		{ time: '09:20', distance: 160 },
-		{ time: '09:25', distance: 240 }
-	];
+	const { data: chartData, class: className }: Props = $props();
 
   const chartConfig = {
     distance: { label: "Distance", color: "var(--chart-1)" },

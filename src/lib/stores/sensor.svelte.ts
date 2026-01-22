@@ -29,7 +29,7 @@ export const sensorState: SensorState = $state({
 export function connectSensor(sensor: Sensor) {
 	sensorState.isConnected = true;
 	sensorState.connectedSensor = sensor;
-	sensorState.rotationBuckets = [];
+	// Don't clear rotation buckets here - let setRotationBuckets handle it
 }
 
 export function disconnectSensor() {
