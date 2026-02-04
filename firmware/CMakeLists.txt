@@ -11,6 +11,9 @@ project(bike-odometer)
 # NORDIC SDK APP START
 target_sources(app PRIVATE
   src/main.c
+  src/odometer.c
+  src/ble_service.c
+  src/leds.c
 )
 
 # NORDIC SDK APP END

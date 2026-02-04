@@ -1,0 +1,9 @@
+app:
+  address: 0x0
+  size: 0xf8000
+  region: flash_primary
+
+settings_storage:
+  address: 0xf8000
+  size: 0x8000
+  region: flash_primary
