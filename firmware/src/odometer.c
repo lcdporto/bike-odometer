@@ -9,6 +9,9 @@
 #include <zephyr/settings/settings.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/irq.h>
+#include <zephyr/pm/pm.h>
+#include <zephyr/sys/poweroff.h>
+#include <hal/nrf_gpio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -37,12 +40,17 @@ static bool in_active_trip;  /* true if last bin had pulses */
 static uint32_t pending_pulses;
 static bool pending_save;
 
+/* Deep sleep after this many consecutive zero-pulse bins */
+#define ZERO_BINS_BEFORE_SLEEP 2
+static uint32_t consecutive_zero_bins;
+
 /* Forward declarations */
 static void pulse_gpio_callback(const struct device *dev, struct gpio_callback *cb, uint32_t pins);
 static void bin_timer_handler(struct k_timer *timer);
 static void save_work_handler(struct k_work *work);
 static void store_bin(uint32_t pulses);
 static void save_trips_to_nvm(void);
+static void enter_deep_sleep(void);
 
 /*
  * GPIO interrupt callback for pulse detection
@@ -73,6 +81,30 @@ static void bin_timer_handler(struct k_timer *timer)
 }
 
 /*
+ * Enter deep sleep (system off) with pulse pin as wake-up source
+ */
+static void enter_deep_sleep(void)
+{
+	printk("Entering deep sleep... pulse pin %d will wake device\\n", PULSE_PIN);
+
+	/* Give time for the message to be transmitted */
+	k_sleep(K_MSEC(100));
+
+	/* Configure the pulse pin as a wake-up source using SENSE
+	 * The pin is configured with pull-up, so we sense LOW (falling edge)
+	 */
+	nrf_gpio_cfg_sense_input(NRF_GPIO_PIN_MAP(0, PULSE_PIN),
+							 NRF_GPIO_PIN_PULLUP,
+							 NRF_GPIO_PIN_SENSE_LOW);
+
+	/* Enter system off mode - device will reset on wake-up */
+	sys_poweroff();
+
+	/* Should not reach here */
+	printk("Deep sleep failed!\\n");
+}
+
+/*
  * Work handler - stores bin and persists to NVM (runs in thread context)
  */
 static void save_work_handler(struct k_work *work)
@@ -96,9 +128,20 @@ static void store_bin(uint32_t pulses)
 		if (in_active_trip) {
 			printk("Trip ended (no pulses)\n");
 			in_active_trip = false;
+			save_trips_to_nvm();  /* Ensure trip is saved before potential sleep */
+		}
+		
+		consecutive_zero_bins++;
+		printk("Zero bins: %u/%d before sleep\n", consecutive_zero_bins, ZERO_BINS_BEFORE_SLEEP);
+		
+		if (consecutive_zero_bins >= ZERO_BINS_BEFORE_SLEEP) {
+			enter_deep_sleep();
 		}
 		return;
 	}
+
+	/* We have pulses - reset consecutive zero counter */
+	consecutive_zero_bins = 0;
 
 	/* We have pulses - check if we need to start a new trip */
 	if (!in_active_trip) {
