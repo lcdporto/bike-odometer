@@ -18,9 +18,6 @@
 #define DEVICE_NAME             CONFIG_BT_DEVICE_NAME
 #define DEVICE_NAME_LEN         (sizeof(DEVICE_NAME) - 1)
 
-/* Connection callback */
-static ble_connection_cb_t connection_cb;
-
 /* Advertising work */
 static struct k_work adv_work;
 
@@ -157,19 +154,11 @@ static void connected(struct bt_conn *conn, uint8_t err)
 	}
 
 	printk("Connected\n");
-
-	if (connection_cb) {
-		connection_cb(true);
-	}
 }
 
 static void disconnected(struct bt_conn *conn, uint8_t reason)
 {
 	printk("Disconnected, reason 0x%02x %s\n", reason, bt_hci_err_to_str(reason));
-
-	if (connection_cb) {
-		connection_cb(false);
-	}
 }
 
 static void recycled_cb(void)
@@ -206,9 +195,4 @@ int ble_service_init(void)
 void ble_service_start_advertising(void)
 {
 	k_work_submit(&adv_work);
-}
-
-void ble_service_set_connection_callback(ble_connection_cb_t cb)
-{
-	connection_cb = cb;
 }

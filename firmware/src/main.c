@@ -8,30 +8,14 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 
-#include "leds.h"
 #include "odometer.h"
 #include "ble_service.h"
-
-#define RUN_LED_BLINK_INTERVAL_MS 1000
-
-/* BLE connection callback - updates connection LED */
-static void on_ble_connection_changed(bool connected)
-{
-	leds_set_connection(connected);
-}
 
 int main(void)
 {
 	int err;
 
 	printk("Starting Bike Odometer\n");
-
-	/* Initialize LEDs */
-	err = leds_init();
-	if (err) {
-		printk("LED init failed (err %d)\n", err);
-		/* Continue without LEDs */
-	}
 
 	/* Initialize BLE */
 	err = ble_service_init();
@@ -50,15 +34,11 @@ int main(void)
 		/* Continue - BLE will still work */
 	}
 
-	/* Register BLE connection callback for LED updates */
-	ble_service_set_connection_callback(on_ble_connection_changed);
-
 	/* Start advertising */
 	ble_service_start_advertising();
 
-	/* Main loop - blink run LED */
+	/* Main loop */
 	for (;;) {
-		leds_toggle_run();
-		k_sleep(K_MSEC(RUN_LED_BLINK_INTERVAL_MS));
+		k_sleep(K_FOREVER);
 	}
 }
