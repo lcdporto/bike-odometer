@@ -4,6 +4,7 @@
 
 #include "ble_service.h"
 #include "odometer.h"
+#include "battery.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
@@ -20,6 +21,28 @@
 
 /* Advertising work */
 static struct k_work adv_work;
+
+/*
+ * BLE read handler for pulse count
+ */
+/*
+ * BLE read handler for battery info
+ */
+static ssize_t read_battery(struct bt_conn *conn,
+							const struct bt_gatt_attr *attr,
+							void *buf, uint16_t len, uint16_t offset)
+{
+	uint16_t voltage_mv = battery_get_voltage_mv();
+	uint8_t percent = battery_get_percent();
+
+	char str[32];
+	int n = snprintf(str, sizeof(str), "{\"mv\":%u,\"pct\":%u}", voltage_mv, percent);
+	if (n < 0) {
+		return BT_GATT_ERR(BT_ATT_ERR_UNLIKELY);
+	}
+
+	return bt_gatt_attr_read(conn, attr, buf, len, offset, str, (size_t)n);
+}
 
 /*
  * BLE read handler for pulse count
@@ -92,6 +115,9 @@ static struct bt_uuid_128 bike_pulse_uuid = BT_UUID_INIT_128(
 static struct bt_uuid_128 bike_trips_uuid = BT_UUID_INIT_128(
 	0x88,0x56,0x34,0x12,0x34,0x12,0x78,0x56,0x12,0x34,0x56,0x78,0x12,0x34,0x56,0x78);
 
+static struct bt_uuid_128 bike_battery_uuid = BT_UUID_INIT_128(
+	0x8A,0x56,0x34,0x12,0x34,0x12,0x78,0x56,0x12,0x34,0x56,0x78,0x12,0x34,0x56,0x78);
+
 /* Characteristic Presentation Format: UTF-8 string */
 static const struct bt_gatt_cpf trips_cpf = {
 	.format = 0x19,
@@ -103,6 +129,14 @@ static const struct bt_gatt_cpf trips_cpf = {
 
 static const struct bt_gatt_cpf pulse_cpf = {
 	.format = 0x19,
+	.exponent = 0,
+	.unit = 0x2700,
+	.name_space = 0x01,
+	.description = 0x0000,
+};
+
+static const struct bt_gatt_cpf battery_cpf = {
+	.format = 0x19,  /* UTF-8 string (JSON) */
 	.exponent = 0,
 	.unit = 0x2700,
 	.name_space = 0x01,
@@ -124,6 +158,12 @@ BT_GATT_SERVICE_DEFINE(bike_svc,
 						   read_trips, NULL, NULL),
 	BT_GATT_CUD("Trips", BT_GATT_PERM_READ),
 	BT_GATT_CPF(&trips_cpf),
+	BT_GATT_CHARACTERISTIC(&bike_battery_uuid.uuid,
+						   BT_GATT_CHRC_READ,
+						   BT_GATT_PERM_READ,
+						   read_battery, NULL, NULL),
+	BT_GATT_CUD("Battery", BT_GATT_PERM_READ),
+	BT_GATT_CPF(&battery_cpf),
 );
 
 /* Advertising data */

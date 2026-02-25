@@ -8,6 +8,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 
+#include "battery.h"
 #include "odometer.h"
 #include "ble_service.h"
 
@@ -16,6 +17,15 @@ int main(void)
 	int err;
 
 	printk("Starting Bike Odometer\n");
+
+	/* Measure battery FIRST before any other subsystems
+	 * to minimize load on CR2032 (high internal resistance)
+	 */
+	err = battery_measure();
+	if (err) {
+		printk("Battery measurement failed (err %d)\n", err);
+		/* Continue - battery info will just be unavailable */
+	}
 
 	/* Initialize BLE */
 	err = ble_service_init();
