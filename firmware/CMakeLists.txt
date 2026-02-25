@@ -14,6 +14,7 @@ target_sources(app PRIVATE
   src/odometer.c
   src/ble_service.c
   src/battery.c
+  src/rtc.c
 )
 
 # NORDIC SDK APP END

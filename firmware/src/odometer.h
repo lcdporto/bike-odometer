@@ -1,5 +1,16 @@
 /*
- * Odometer module - Pulse counting and bin storage
+ * Odometer module - Pulse counting and trip storage
+ *
+ * NVM-Direct Architecture:
+ * - Only current trip in RAM (~204 bytes)
+ * - Completed trips stored directly to NVM
+ * - Trips read on-demand from NVM
+ * 
+ * Capacity with 1.5MB NVM:
+ * - ~3000+ trips (8+ years at 1 trip/day)
+ * - Full 5-min bucket detail for all trips
+ * - Daily totals for 13+ months
+ * - All-time counter
  */
 
 #ifndef ODOMETER_H
@@ -7,20 +18,31 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 
 /* Wheel circumference in millimeters (default 2100mm = 2.1m). */
 #ifndef WHEEL_CIRCUMFERENCE_MM
 #define WHEEL_CIRCUMFERENCE_MM 2100U
 #endif
 
-#define BIN_INTERVAL_MINUTES 1
-#define MAX_TRIPS 5
-#define BUCKETS_PER_TRIP 12
+/* Storage configuration - 5-min bins, 4h max sessions */
+#define BIN_INTERVAL_MINUTES  5     /* 5-min bins (client requirement) */
+#define MAX_TRIPS             3000  /* ~8 years at 1 trip/day, stored in NVM */
+#define BUCKETS_PER_TRIP      48    /* 48 bins * 5 min = 4 hours max per trip */
+#define MAX_DAILY_TOTALS      400   /* ~13 months of daily summaries */
 
+/* Trip entry with full bucket detail (~204 bytes each) */
 struct trip_entry {
 	uint64_t start_timestamp_ms;
 	uint32_t buckets[BUCKETS_PER_TRIP];  /* pulse counts per bucket */
-	size_t bucket_count;
+	uint16_t bucket_count;               /* number of valid buckets */
+	uint16_t _reserved;                  /* alignment padding */
+};
+
+/* Daily summary (~8 bytes each) */
+struct daily_total {
+	uint32_t day_number;    /* Days since Unix epoch (fits until year 2106) */
+	uint32_t total_pulses;  /* Total pulses that day */
 };
 
 /**
@@ -35,14 +57,47 @@ int odometer_init(void);
 uint32_t odometer_get_pulse_count(void);
 
 /**
- * @brief Get pointer to trips array
+ * @brief Get all-time pulse count
  */
-const struct trip_entry *odometer_get_trips(void);
+uint64_t odometer_get_total_pulses(void);
 
 /**
- * @brief Get current trip count
+ * @brief Get all-time distance in meters
+ */
+uint32_t odometer_get_total_distance_m(void);
+
+/**
+ * @brief Get total trip count stored in NVM
  */
 size_t odometer_get_trip_count(void);
+
+/**
+ * @brief Read a specific trip from NVM
+ * @param index Trip index (0 = oldest, trip_count-1 = newest)
+ * @param trip_out Pointer to trip_entry struct to fill
+ * @return 0 on success, negative errno on failure
+ */
+int odometer_read_trip(size_t index, struct trip_entry *trip_out);
+
+/**
+ * @brief Get pointer to current (active) trip, or NULL if no active trip
+ */
+const struct trip_entry *odometer_get_current_trip(void);
+
+/**
+ * @brief Check if there's an active trip in progress
+ */
+bool odometer_is_trip_active(void);
+
+/**
+ * @brief Get pointer to daily totals array
+ */
+const struct daily_total *odometer_get_daily_totals(void);
+
+/**
+ * @brief Get daily totals count
+ */
+size_t odometer_get_daily_total_count(void);
 
 /**
  * @brief Load odometer data from NVM

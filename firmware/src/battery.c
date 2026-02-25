@@ -1,7 +1,7 @@
 /*
  * Battery module - CR2032 voltage estimation via ADC
  *
- * Uses SAADC internal VDD channel to measure supply voltage.
+ * Uses SAADC internal VDD/2 channel to measure supply voltage.
  * CR2032 discharge curve (approximation):
  *   3.0V = 100% (fresh)
  *   2.9V = 90%
@@ -17,53 +17,49 @@
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/adc.h>
 #include <zephyr/sys/printk.h>
+#include <zephyr/devicetree.h>
 
-/* ADC configuration for internal VDD measurement */
+/* ADC configuration from devicetree */
 #define ADC_NODE DT_NODELABEL(adc)
+#define ADC_CHANNEL_NODE DT_CHILD(ADC_NODE, channel_0)
+#define ADC_CHANNEL_ID 0
 #define ADC_RESOLUTION 12
-#define ADC_OVERSAMPLING 4  /* Average 16 samples for stability */
-#define ADC_GAIN ADC_GAIN_1_6
-#define ADC_REFERENCE ADC_REF_INTERNAL  /* 0.6V internal reference */
 
-/* With 1/6 gain and 0.6V reference, max measurable = 3.6V */
+/*
+ * Voltage calculation for VDD/2 with gain 1/4 and 0.6V internal reference:
+ * - ADC full scale = 0.6V * 4 (reciprocal of 1/4 gain) = 2.4V at input
+ * - Input is VDD/2, so VDD full scale = 2.4V * 2 = 4.8V
+ * - VDD (mV) = raw * 4800 / 4095
+ */
+#define ADC_FULL_SCALE_MV 4800
 
 static const struct device *adc_dev;
 static uint16_t battery_voltage_mv;
 static uint8_t battery_percent;
+static bool adc_initialized;
 
 static int16_t adc_buffer;
 
-static struct adc_channel_cfg channel_cfg = {
-	.gain = ADC_GAIN,
-	.reference = ADC_REFERENCE,
-	.acquisition_time = ADC_ACQ_TIME(ADC_ACQ_TIME_MICROSECONDS, 40),
-	.channel_id = 0,
-#if defined(CONFIG_ADC_NRFX_SAADC)
-	.input_positive = SAADC_CH_PSELP_PSELP_VDD,  /* Internal VDD channel */
-#endif
-};
+/* Channel config from devicetree */
+static const struct adc_channel_cfg channel_cfg = ADC_CHANNEL_CFG_DT(ADC_CHANNEL_NODE);
 
 static struct adc_sequence sequence = {
-	.channels = BIT(0),
+	.channels = BIT(ADC_CHANNEL_ID),
 	.buffer = &adc_buffer,
 	.buffer_size = sizeof(adc_buffer),
 	.resolution = ADC_RESOLUTION,
-	.oversampling = ADC_OVERSAMPLING,
 };
 
 /*
  * Convert ADC raw value to millivolts
- * With 1/6 gain and 0.6V reference:
- *   Full scale (4095 @ 12-bit) = 0.6V * 6 = 3.6V
- *   mV = raw * 3600 / 4095
+ * VDD (mV) = raw * ADC_FULL_SCALE_MV / 4095
  */
 static uint16_t adc_raw_to_mv(int16_t raw)
 {
 	if (raw < 0) {
 		return 0;
 	}
-	/* Avoid overflow: (raw * 3600) could exceed 32-bit for 12-bit ADC */
-	return (uint16_t)((raw * 3600UL) / 4095UL);
+	return (uint16_t)((raw * (uint32_t)ADC_FULL_SCALE_MV) / 4095UL);
 }
 
 /*
@@ -121,16 +117,19 @@ int battery_measure(void)
 {
 	int err;
 
-	adc_dev = DEVICE_DT_GET(ADC_NODE);
-	if (!device_is_ready(adc_dev)) {
-		printk("Battery: ADC device not ready\n");
-		return -ENODEV;
-	}
+	if (!adc_initialized) {
+		adc_dev = DEVICE_DT_GET(ADC_NODE);
+		if (!device_is_ready(adc_dev)) {
+			printk("Battery: ADC device not ready\n");
+			return -ENODEV;
+		}
 
-	err = adc_channel_setup(adc_dev, &channel_cfg);
-	if (err) {
-		printk("Battery: ADC channel setup failed (%d)\n", err);
-		return err;
+		err = adc_channel_setup(adc_dev, &channel_cfg);
+		if (err) {
+			printk("Battery: ADC channel setup failed (%d)\n", err);
+			return err;
+		}
+		adc_initialized = true;
 	}
 
 	/* Small delay to let voltage stabilize after boot */

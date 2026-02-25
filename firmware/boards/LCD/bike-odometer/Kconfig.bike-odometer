@@ -1,0 +1,3 @@
+config BOARD_BIKE_ODOMETER
+	bool
+	select SOC_NRF54L15_CPUAPP

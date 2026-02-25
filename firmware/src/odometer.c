@@ -1,29 +1,57 @@
 /*
- * Odometer module - Pulse counting and trip storage
+ * Odometer module - Pulse counting and NVM-direct trip storage
+ *
+ * Architecture:
+ * - Only current (active) trip kept in RAM (~204 bytes)
+ * - Completed trips stored directly to NVS
+ * - Trips read from NVS on-demand
+ * - Supports 3000+ trips (8+ years)
  */
 
 #include "odometer.h"
+#include "rtc.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/flash.h>
+#include <zephyr/storage/flash_map.h>
+#include <zephyr/fs/nvs.h>
 #include <zephyr/settings/settings.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/irq.h>
-#include <zephyr/pm/pm.h>
-#include <zephyr/sys/poweroff.h>
-#include <hal/nrf_gpio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
 
-#define DEBUG_ODOMETER 1
+//#define DEBUG 1
 
-/* GPIO configuration */
-#define PULSE_GPIO_NODE DT_NODELABEL(gpio0)
+/* GPIO configuration from devicetree */
+#define PULSE_NODE DT_ALIAS(pulse_sensor)
 
-#ifndef PULSE_PIN
-#define PULSE_PIN 11
+#if !DT_NODE_EXISTS(PULSE_NODE)
+#error "pulse-sensor alias not defined in devicetree"
 #endif
+
+static const struct gpio_dt_spec pulse_gpio = GPIO_DT_SPEC_GET(PULSE_NODE, gpios);
+
+/* NVS for direct trip storage */
+#define NVS_PARTITION		storage_partition
+#define NVS_PARTITION_DEVICE	FIXED_PARTITION_DEVICE(NVS_PARTITION)
+#define NVS_PARTITION_OFFSET	FIXED_PARTITION_OFFSET(NVS_PARTITION)
+#define NVS_PARTITION_SIZE	FIXED_PARTITION_SIZE(NVS_PARTITION)
+
+/* NVS IDs - trips use IDs 1000+ */
+#define NVS_ID_TRIP_COUNT    1
+#define NVS_ID_ALL_TIME      2
+#define NVS_ID_ACTIVE_FLAG   3
+#define NVS_ID_DAILY_COUNT   4
+#define NVS_ID_DAILY_DATA    5
+#define NVS_ID_CURRENT_DAY   6
+#define NVS_ID_CURRENT_PULSE 7
+#define NVS_ID_TRIP_BASE     1000  /* Trip IDs: 1000, 1001, 1002, ... */
+
+static struct nvs_fs nvs;
+static bool nvs_ready;
 
 /* Module state */
 static volatile uint32_t pulse_count;
@@ -31,16 +59,26 @@ static struct gpio_callback pulse_cb_data;
 static struct k_timer bin_timer;
 static struct k_work save_work;
 
-/* Trip storage */
-static struct trip_entry trips[MAX_TRIPS];
-static size_t trip_count;
-static bool in_active_trip;  /* true if last bin had pulses */
+/* Current trip - only one trip in RAM at a time */
+static struct trip_entry current_trip;
+static bool in_active_trip;
 
-/* Pending bin data to save (set by timer, saved by work handler) */
+/* Trip count in NVS */
+static size_t nvm_trip_count;
+
+/* Daily totals - compact historical data (~3.2KB in RAM) */
+static struct daily_total daily_totals[MAX_DAILY_TOTALS];
+static size_t daily_total_count;
+static uint32_t current_day_number;
+static uint32_t current_day_pulses;
+
+/* All-time counter */
+static uint64_t all_time_pulses;
+
+/* Pending bin data */
 static uint32_t pending_pulses;
 static bool pending_save;
 
-/* Deep sleep after this many consecutive zero-pulse bins */
 #define ZERO_BINS_BEFORE_SLEEP 2
 static uint32_t consecutive_zero_bins;
 
@@ -49,8 +87,12 @@ static void pulse_gpio_callback(const struct device *dev, struct gpio_callback *
 static void bin_timer_handler(struct k_timer *timer);
 static void save_work_handler(struct k_work *work);
 static void store_bin(uint32_t pulses);
-static void save_trips_to_nvm(void);
-static void enter_deep_sleep(void);
+static void save_current_trip_to_nvs(bool completed);
+static void save_metadata_to_nvs(void);
+static void update_daily_total(uint32_t pulses);
+static uint32_t get_current_day_number(void);
+static void enter_low_power_idle(void);
+static int nvs_init_storage(void);
 
 /*
  * GPIO interrupt callback for pulse detection
@@ -59,8 +101,8 @@ static void pulse_gpio_callback(const struct device *dev, struct gpio_callback *
 {
 	unsigned int key = irq_lock();
 	pulse_count++;
-#ifdef DEBUG_ODOMETER
-	printk("DEBUG_ODOMETER: pulse detected pins=0x%08x total=%u\n", pins, pulse_count);
+#ifdef DEBUG
+	printk("DEBUG: pulse detected pins=0x%08x total=%u\n", pins, pulse_count);
 #endif
 	irq_unlock(key);
 }
@@ -81,27 +123,35 @@ static void bin_timer_handler(struct k_timer *timer)
 }
 
 /*
- * Enter deep sleep (system off) with pulse pin as wake-up source
+ * Enter low power idle mode with pulse pin as wake-up source.
+ * Unlike system off, this preserves GRTC so time keeps ticking.
+ * The GPIO interrupt will wake the system on pulse detection.
  */
-static void enter_deep_sleep(void)
+static void enter_low_power_idle(void)
 {
-	printk("Entering deep sleep... pulse pin %d will wake device\\n", PULSE_PIN);
+	#ifdef DEBUG
+	printk("Entering low power idle... GRTC keeps running, P0.%02d will wake\n", pulse_gpio.pin);
+	#endif
 
-	/* Give time for the message to be transmitted */
-	k_sleep(K_MSEC(100));
+	/* Stop the bin timer to avoid periodic wakeups */
+	k_timer_stop(&bin_timer);
 
-	/* Configure the pulse pin as a wake-up source using SENSE
-	 * The pin is configured with pull-up, so we sense LOW (falling edge)
+	/* GPIO interrupt is still configured from init, so any pulse
+	 * will wake us up. The system will naturally enter idle sleep.
+	 * When a pulse arrives, the ISR fires and wakes main context.
 	 */
-	nrf_gpio_cfg_sense_input(NRF_GPIO_PIN_MAP(0, PULSE_PIN),
-							 NRF_GPIO_PIN_PULLUP,
-							 NRF_GPIO_PIN_SENSE_LOW);
 
-	/* Enter system off mode - device will reset on wake-up */
-	sys_poweroff();
+	/* Wait for pulse - system enters automatic low-power idle */
+	while (pulse_count == 0) {
+		k_sleep(K_MSEC(100));
+	}
 
-	/* Should not reach here */
-	printk("Deep sleep failed!\\n");
+	/* Woken by pulse! Restart the bin timer */
+	#ifdef DEBUG
+	printk("Woken from idle by pulse, resuming normal operation\n");
+	#endif
+	k_timer_start(&bin_timer, K_MINUTES(BIN_INTERVAL_MINUTES), K_MINUTES(BIN_INTERVAL_MINUTES));
+	consecutive_zero_bins = 0;
 }
 
 /*
@@ -117,175 +167,236 @@ static void save_work_handler(struct k_work *work)
 }
 
 /*
- * Store a bin entry - handles trip logic
+ * Store a bin entry - handles trip logic, daily totals, and all-time counter
  */
 static void store_bin(uint32_t pulses)
 {
-	uint64_t ts = k_uptime_get();
+	uint64_t ts = rtc_is_time_set() ? rtc_get_time_ms() : k_uptime_get();
 
-	/* If no pulses, end the current trip (if any) */
+	/* Update all-time counter and daily totals */
+	if (pulses > 0) {
+		all_time_pulses += pulses;
+		update_daily_total(pulses);
+	}
+
+	/* If no pulses, end the current trip */
 	if (pulses == 0) {
 		if (in_active_trip) {
-			printk("Trip ended (no pulses)\n");
+#ifdef DEBUG
+			printk("Trip ended (no pulses), saving to NVS slot %zu\n", nvm_trip_count);
+#endif
+			save_current_trip_to_nvs(true);  /* completed=true */
 			in_active_trip = false;
-			save_trips_to_nvm();  /* Ensure trip is saved before potential sleep */
 		}
-		
+
 		consecutive_zero_bins++;
+#ifdef DEBUG
 		printk("Zero bins: %u/%d before sleep\n", consecutive_zero_bins, ZERO_BINS_BEFORE_SLEEP);
-		
+#endif
+
 		if (consecutive_zero_bins >= ZERO_BINS_BEFORE_SLEEP) {
-			enter_deep_sleep();
+			enter_low_power_idle();
 		}
 		return;
 	}
 
-	/* We have pulses - reset consecutive zero counter */
+	/* We have pulses - reset zero counter */
 	consecutive_zero_bins = 0;
 
-	/* We have pulses - check if we need to start a new trip */
+	/* Start new trip if needed */
 	if (!in_active_trip) {
-		/* Start a new trip */
-		if (trip_count >= MAX_TRIPS) {
-			/* Shift trips to make room (discard oldest) */
-			memmove(&trips[0], &trips[1], sizeof(struct trip_entry) * (MAX_TRIPS - 1));
-			trip_count = MAX_TRIPS - 1;
-			printk("Discarded oldest trip to make room\n");
-		}
-
-		/* Initialize new trip */
-		size_t new_idx = trip_count;
-		memset(&trips[new_idx], 0, sizeof(struct trip_entry));
-		trips[new_idx].start_timestamp_ms = ts;
-		trips[new_idx].bucket_count = 0;
-		trip_count++;
+		memset(&current_trip, 0, sizeof(current_trip));
+		current_trip.start_timestamp_ms = ts;
+		current_trip.bucket_count = 0;
 		in_active_trip = true;
 
-		printk("Started new trip (id=%zu, ts=%llu)\n", trip_count, (unsigned long long)ts);
+#ifdef DEBUG
+		printk("Started new trip (will be slot %zu, ts=%llu)\n",
+		       nvm_trip_count, (unsigned long long)ts);
+#endif
+	}
+
+	/* Check if current trip is full */
+	if (current_trip.bucket_count >= BUCKETS_PER_TRIP) {
+#ifdef DEBUG
+		printk("Trip bucket limit reached, saving and starting new\n");
+#endif
+		save_current_trip_to_nvs(true);  /* completed=true */
+		in_active_trip = false;
+		store_bin(pulses);  /* Recursive call starts new trip */
+		return;
 	}
 
 	/* Add bucket to current trip */
-	size_t current_trip = trip_count - 1;
-	struct trip_entry *trip = &trips[current_trip];
+	current_trip.buckets[current_trip.bucket_count] = pulses;
+	current_trip.bucket_count++;
 
-	if (trip->bucket_count >= BUCKETS_PER_TRIP) {
-		/* Trip is full - start a new one */
-		printk("Trip bucket limit reached, starting new trip\n");
-		in_active_trip = false;
-		store_bin(pulses);  /* Recursive call will start new trip */
+#ifdef DEBUG
+	uint32_t distance = pulses * WHEEL_CIRCUMFERENCE_MM;
+	printk("Bucket stored: bucket=%u pulses=%u distance_m=%.3f\n",
+	       current_trip.bucket_count, pulses, distance / 1000.0);
+#endif
+
+	/* Backup current trip periodically (every 30 min = 6 bins) */
+	if (current_trip.bucket_count % 6 == 0) {
+		save_current_trip_to_nvs(false);  /* completed=false, just backup */
+	}
+}
+
+/*
+ * Get current day number (days since Unix epoch)
+ */
+static uint32_t get_current_day_number(void)
+{
+	if (!rtc_is_time_set()) {
+		return 0;  /* No valid time, can't track days */
+	}
+	uint64_t unix_time = rtc_get_time();
+	return (uint32_t)(unix_time / 86400);  /* Seconds per day */
+}
+
+/*
+ * Update daily total - accumulates pulses per day
+ */
+static void update_daily_total(uint32_t pulses)
+{
+	uint32_t today = get_current_day_number();
+	
+	if (today == 0) {
+		/* No valid RTC time - can't track daily totals */
 		return;
 	}
 
-	trip->buckets[trip->bucket_count] = pulses;
-	trip->bucket_count++;
-
-	uint32_t distance = pulses * WHEEL_CIRCUMFERENCE_MM;
-	printk("Bucket stored: trip=%zu bucket=%zu pulses=%u distance_m=%.3f\n",
-		   current_trip + 1, trip->bucket_count, pulses, distance / 1000.0);
-
-	/* Persist to NVM */
-	save_trips_to_nvm();
+	if (today != current_day_number) {
+		/* Day changed - save previous day if we had data */
+		if (current_day_number != 0 && current_day_pulses > 0) {
+			/* Check if we need to make room */
+			if (daily_total_count >= MAX_DAILY_TOTALS) {
+				/* Shift to discard oldest */
+				memmove(&daily_totals[0], &daily_totals[1], 
+				        sizeof(struct daily_total) * (MAX_DAILY_TOTALS - 1));
+				daily_total_count = MAX_DAILY_TOTALS - 1;
+			}
+			
+			/* Store previous day's total */
+			daily_totals[daily_total_count].day_number = current_day_number;
+			daily_totals[daily_total_count].total_pulses = current_day_pulses;
+			daily_total_count++;
+			
+			#ifdef DEBUG
+			printk("Daily total saved: day=%u pulses=%u\n", 
+			       current_day_number, current_day_pulses);
+			#endif
+			
+			save_metadata_to_nvs();
+		}
+		
+		/* Start new day */
+		current_day_number = today;
+		current_day_pulses = 0;
+	}
+	
+	current_day_pulses += pulses;
 }
 
 /*
- * Save all trips to NVM
+ * Save daily totals to NVM (called on day change)
  */
-static void save_trips_to_nvm(void)
+static void save_metadata_to_nvs(void)
 {
-#if IS_ENABLED(CONFIG_SETTINGS)
-	/* Save trip count */
-	int err = settings_save_one("odom/tcnt", &trip_count, sizeof(trip_count));
-	if (err) {
-		printk("NVM: save trip_count FAILED (%d)\n", err);
+	if (!nvs_ready) return;
+
+	nvs_write(&nvs, NVS_ID_ALL_TIME, &all_time_pulses, sizeof(all_time_pulses));
+	nvs_write(&nvs, NVS_ID_TRIP_COUNT, &nvm_trip_count, sizeof(nvm_trip_count));
+	nvs_write(&nvs, NVS_ID_ACTIVE_FLAG, &in_active_trip, sizeof(in_active_trip));
+	nvs_write(&nvs, NVS_ID_DAILY_COUNT, &daily_total_count, sizeof(daily_total_count));
+	nvs_write(&nvs, NVS_ID_CURRENT_DAY, &current_day_number, sizeof(current_day_number));
+	nvs_write(&nvs, NVS_ID_CURRENT_PULSE, &current_day_pulses, sizeof(current_day_pulses));
+
+	if (daily_total_count > 0) {
+		nvs_write(&nvs, NVS_ID_DAILY_DATA, daily_totals,
+		          daily_total_count * sizeof(struct daily_total));
 	}
 
-	/* Save in_active_trip flag */
-	err = settings_save_one("odom/active", &in_active_trip, sizeof(in_active_trip));
-	if (err) {
-		printk("NVM: save in_active_trip FAILED (%d)\n", err);
-	}
-
-	/* Save each trip */
-	for (size_t i = 0; i < trip_count; i++) {
-		char key[32];
-		snprintf(key, sizeof(key), "odom/trip/%zu", i);
-		err = settings_save_one(key, &trips[i], sizeof(struct trip_entry));
-		if (err) {
-			printk("NVM: save trip[%zu] FAILED (%d)\n", i, err);
-		} else {
-			printk("NVM: save trip[%zu] OK (buckets=%zu)\n", i, trips[i].bucket_count);
-		}
-	}
+#ifdef DEBUG
+	printk("NVS: Metadata saved (trips=%zu, all_time=%llu)\n",
+	       nvm_trip_count, (unsigned long long)all_time_pulses);
 #endif
 }
 
 /*
- * Settings handler for loading odometer data from NVM
+ * Save current trip to NVS
+ * @param completed: true if trip ended, false if just backup
  */
-#if IS_ENABLED(CONFIG_SETTINGS)
-static int odom_set(const char *name, size_t len, settings_read_cb read_cb, void *cb_arg)
+static void save_current_trip_to_nvs(bool completed)
 {
-	if (!name) {
-		return -ENOENT;
-	}
+	if (!nvs_ready) return;
 
-	/* Handle trip_count */
-	if (strcmp(name, "tcnt") == 0) {
-		if (len != sizeof(trip_count)) {
-			return -EINVAL;
+	if (completed) {
+		/* Trip completed - save to next slot and increment count */
+		if (nvm_trip_count < MAX_TRIPS) {
+			uint16_t trip_id = NVS_ID_TRIP_BASE + nvm_trip_count;
+			int rc = nvs_write(&nvs, trip_id, &current_trip, sizeof(current_trip));
+			if (rc > 0) {
+				nvm_trip_count++;
+#ifdef DEBUG
+				printk("NVS: Trip saved to slot %zu (id=%u, buckets=%u)\n",
+				       nvm_trip_count - 1, trip_id, current_trip.bucket_count);
+#endif
+			}
+		} else {
+#ifdef DEBUG
+			printk("NVS: Trip storage full (%zu trips)\n", MAX_TRIPS);
+#endif
 		}
-		ssize_t rc = read_cb(cb_arg, &trip_count, sizeof(trip_count));
-		if (rc < 0) {
-			return rc;
-		}
-		if (trip_count > MAX_TRIPS) {
-			trip_count = MAX_TRIPS;
-		}
-		printk("NVM: Loaded trip_count=%zu\n", trip_count);
-		return 0;
+	} else {
+		/* Just backing up in-progress trip */
+		uint16_t trip_id = NVS_ID_TRIP_BASE + nvm_trip_count;
+		nvs_write(&nvs, trip_id, &current_trip, sizeof(current_trip));
+#ifdef DEBUG
+		printk("NVS: Trip backup to slot %zu (buckets=%u)\n",
+		       nvm_trip_count, current_trip.bucket_count);
+#endif
 	}
 
-	/* Handle in_active_trip */
-	if (strcmp(name, "active") == 0) {
-		if (len != sizeof(in_active_trip)) {
-			return -EINVAL;
-		}
-		ssize_t rc = read_cb(cb_arg, &in_active_trip, sizeof(in_active_trip));
-		if (rc < 0) {
-			return rc;
-		}
-		printk("NVM: Loaded in_active_trip=%d\n", in_active_trip);
-		return 0;
+	/* Always update metadata */
+	save_metadata_to_nvs();
+}
+
+/*
+ * Initialize NVS storage
+ */
+static int nvs_init_storage(void)
+{
+	struct flash_pages_info info;
+	const struct device *flash_dev = NVS_PARTITION_DEVICE;
+
+	if (!device_is_ready(flash_dev)) {
+		printk("Flash device not ready\n");
+		return -ENODEV;
 	}
 
-	/* Handle trip data: "trip/<index>" */
-	if (strncmp(name, "trip/", 5) != 0) {
-		return -ENOENT;
-	}
+	nvs.flash_device = flash_dev;
+	nvs.offset = NVS_PARTITION_OFFSET;
 
-	int idx = atoi(name + 5);
-	if (idx < 0 || idx >= (int)MAX_TRIPS) {
-		return -EINVAL;
+	int rc = flash_get_page_info_by_offs(flash_dev, nvs.offset, &info);
+	if (rc) {
+		printk("Unable to get flash page info (err %d)\n", rc);
+		return rc;
 	}
+	nvs.sector_size = info.size;
+	nvs.sector_count = NVS_PARTITION_SIZE / info.size;
 
-	if (len != sizeof(struct trip_entry)) {
-		return -EINVAL;
-	}
-
-	ssize_t rc = read_cb(cb_arg, &trips[idx], sizeof(struct trip_entry));
-	if (rc < 0) {
+	rc = nvs_mount(&nvs);
+	if (rc) {
+		printk("NVS mount failed (err %d)\n", rc);
 		return rc;
 	}
 
-	printk("NVM: Loaded trip[%d]: start_ts=%llu buckets=%zu\n",
-		   idx, (unsigned long long)trips[idx].start_timestamp_ms,
-		   trips[idx].bucket_count);
-
+	nvs_ready = true;
+	printk("NVS mounted: %u sectors of %u bytes\n", nvs.sector_count, nvs.sector_size);
 	return 0;
 }
-
-SETTINGS_STATIC_HANDLER_DEFINE(odom, "odom", NULL, odom_set, NULL, 0);
-#endif
 
 /*
  * Public API
@@ -293,28 +404,24 @@ SETTINGS_STATIC_HANDLER_DEFINE(odom, "odom", NULL, odom_set, NULL, 0);
 
 int odometer_init(void)
 {
-	const struct device *gpio_dev = DEVICE_DT_GET(PULSE_GPIO_NODE);
-
-	if (!device_is_ready(gpio_dev)) {
+	if (!gpio_is_ready_dt(&pulse_gpio)) {
 		printk("Pulse GPIO device not ready\n");
 		return -ENODEV;
 	}
 
-	int err = gpio_pin_configure(gpio_dev, PULSE_PIN, GPIO_INPUT | GPIO_PULL_UP);
+	int err = gpio_pin_configure_dt(&pulse_gpio, GPIO_INPUT);
 	if (err) {
-		printk("Failed to configure pulse pin %d (err %d)\n", PULSE_PIN, err);
+		printk("Failed to configure pulse pin (err %d)\n", err);
 		return err;
 	}
 
-	gpio_init_callback(&pulse_cb_data, pulse_gpio_callback, (1U << PULSE_PIN));
-	gpio_add_callback(gpio_dev, &pulse_cb_data);
-	gpio_pin_interrupt_configure(gpio_dev, PULSE_PIN, GPIO_INT_EDGE_TO_ACTIVE);
-	printk("Pulse GPIO configured on gpio0 pin %d\n", PULSE_PIN);
+	gpio_init_callback(&pulse_cb_data, pulse_gpio_callback, BIT(pulse_gpio.pin));
+	gpio_add_callback(pulse_gpio.port, &pulse_cb_data);
+	gpio_pin_interrupt_configure_dt(&pulse_gpio, GPIO_INT_EDGE_TO_ACTIVE);
+	printk("Pulse GPIO configured on P0.%02d\n", pulse_gpio.pin);
 
-	/* Initialize work queue for NVM saves */
 	k_work_init(&save_work, save_work_handler);
 
-	/* Start bin timer */
 	k_timer_init(&bin_timer, bin_timer_handler, NULL);
 	k_timer_start(&bin_timer, K_MINUTES(BIN_INTERVAL_MINUTES), K_MINUTES(BIN_INTERVAL_MINUTES));
 	printk("Bin timer started (%d minute interval)\n", BIN_INTERVAL_MINUTES);
@@ -324,43 +431,118 @@ int odometer_init(void)
 
 uint32_t odometer_get_pulse_count(void)
 {
-	uint32_t pulses;
+	uint32_t p;
 	unsigned int key = irq_lock();
-	pulses = pulse_count;
+	p = pulse_count;
 	irq_unlock(key);
-	return pulses;
+	return p;
 }
 
-const struct trip_entry *odometer_get_trips(void)
+uint64_t odometer_get_total_pulses(void)
 {
-	return trips;
+	return all_time_pulses;
+}
+
+uint32_t odometer_get_total_distance_m(void)
+{
+	return (uint32_t)((all_time_pulses * WHEEL_CIRCUMFERENCE_MM) / 1000);
 }
 
 size_t odometer_get_trip_count(void)
 {
-	return trip_count;
+	return nvm_trip_count + (in_active_trip ? 1 : 0);
+}
+
+int odometer_read_trip(size_t index, struct trip_entry *trip_out)
+{
+	if (!trip_out) {
+		return -EINVAL;
+	}
+	if (!nvs_ready) {
+		return -ENODEV;
+	}
+
+	size_t total = odometer_get_trip_count();
+	if (index >= total) {
+		return -ENOENT;
+	}
+
+	/* If requesting the current active trip */
+	if (in_active_trip && index == total - 1) {
+		memcpy(trip_out, &current_trip, sizeof(current_trip));
+		return 0;
+	}
+
+	/* Read from NVS */
+	uint16_t trip_id = NVS_ID_TRIP_BASE + index;
+	ssize_t rc = nvs_read(&nvs, trip_id, trip_out, sizeof(struct trip_entry));
+	if (rc != sizeof(struct trip_entry)) {
+		return -EIO;
+	}
+
+	return 0;
+}
+
+const struct trip_entry *odometer_get_current_trip(void)
+{
+	return in_active_trip ? &current_trip : NULL;
+}
+
+bool odometer_is_trip_active(void)
+{
+	return in_active_trip;
+}
+
+const struct daily_total *odometer_get_daily_totals(void)
+{
+	return daily_totals;
+}
+
+size_t odometer_get_daily_total_count(void)
+{
+	return daily_total_count;
 }
 
 void odometer_load_from_nvm(void)
 {
-#if IS_ENABLED(CONFIG_SETTINGS)
-	int rc = settings_subsys_init();
+	int rc = nvs_init_storage();
 	if (rc) {
-		printk("settings_subsys_init failed (err %d)\n", rc);
+		printk("NVS init failed (err %d)\n", rc);
 		return;
 	}
-	printk("Settings subsystem initialized\n");
 
-	rc = settings_load();
-	if (rc) {
-		printk("settings_load failed (err %d)\n", rc);
-	} else {
-		printk("Settings loaded: %zu trips, active=%d\n", trip_count, in_active_trip);
-		for (size_t i = 0; i < trip_count; i++) {
-			printk("  trip[%zu]: start=%llu buckets=%zu\n",
-				   i, (unsigned long long)trips[i].start_timestamp_ms,
-				   trips[i].bucket_count);
+	/* Load metadata */
+	nvs_read(&nvs, NVS_ID_ALL_TIME, &all_time_pulses, sizeof(all_time_pulses));
+	nvs_read(&nvs, NVS_ID_TRIP_COUNT, &nvm_trip_count, sizeof(nvm_trip_count));
+	nvs_read(&nvs, NVS_ID_ACTIVE_FLAG, &in_active_trip, sizeof(in_active_trip));
+	nvs_read(&nvs, NVS_ID_DAILY_COUNT, &daily_total_count, sizeof(daily_total_count));
+	nvs_read(&nvs, NVS_ID_CURRENT_DAY, &current_day_number, sizeof(current_day_number));
+	nvs_read(&nvs, NVS_ID_CURRENT_PULSE, &current_day_pulses, sizeof(current_day_pulses));
+
+	/* Clamp values */
+	if (nvm_trip_count > MAX_TRIPS) nvm_trip_count = MAX_TRIPS;
+	if (daily_total_count > MAX_DAILY_TOTALS) daily_total_count = MAX_DAILY_TOTALS;
+
+	/* Load daily totals */
+	if (daily_total_count > 0) {
+		nvs_read(&nvs, NVS_ID_DAILY_DATA, daily_totals,
+		         daily_total_count * sizeof(struct daily_total));
+	}
+
+	/* Restore in-progress trip if active */
+	if (in_active_trip) {
+		uint16_t trip_id = NVS_ID_TRIP_BASE + nvm_trip_count;
+		ssize_t r = nvs_read(&nvs, trip_id, &current_trip, sizeof(current_trip));
+		if (r == sizeof(current_trip)) {
+			printk("NVS: Restored in-progress trip (buckets=%u)\n", current_trip.bucket_count);
+		} else {
+			in_active_trip = false;
 		}
 	}
-#endif
+
+	printk("NVS loaded:\n");
+	printk("  All-time: %llu pulses, %u meters\n",
+	       (unsigned long long)all_time_pulses, odometer_get_total_distance_m());
+	printk("  Trips in NVS: %zu (active=%d)\n", nvm_trip_count, in_active_trip);
+	printk("  Daily totals: %zu entries\n", daily_total_count);
 }

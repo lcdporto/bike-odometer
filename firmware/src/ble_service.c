@@ -5,6 +5,7 @@
 #include "ble_service.h"
 #include "odometer.h"
 #include "battery.h"
+#include "rtc.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
@@ -14,6 +15,7 @@
 #include <zephyr/bluetooth/uuid.h>
 #include <zephyr/bluetooth/gatt.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdbool.h>
 
 #define DEVICE_NAME             CONFIG_BT_DEVICE_NAME
@@ -63,41 +65,60 @@ static ssize_t read_pulse(struct bt_conn *conn,
 }
 
 /*
- * BLE read handler for trips JSON
+ * BLE read handler for odometer (all-time total)
+ */
+static ssize_t read_odometer(struct bt_conn *conn,
+						     const struct bt_gatt_attr *attr,
+						     void *buf, uint16_t len, uint16_t offset)
+{
+	uint64_t total_pulses = odometer_get_total_pulses();
+	uint32_t total_distance_m = odometer_get_total_distance_m();
+	size_t daily_count = odometer_get_daily_total_count();
+
+	char str[64];
+	int n = snprintf(str, sizeof(str), "{\"pulses\":%llu,\"meters\":%u,\"days\":%zu}",
+	                 (unsigned long long)total_pulses, total_distance_m, daily_count);
+	if (n < 0) {
+		return BT_GATT_ERR(BT_ATT_ERR_UNLIKELY);
+	}
+
+	return bt_gatt_attr_read(conn, attr, buf, len, offset, str, (size_t)n);
+}
+
+/*
+ * BLE read handler for trips JSON - returns recent trips (last 10)
+ * For full history, use trip query characteristic
  */
 static ssize_t read_trips(struct bt_conn *conn,
 						  const struct bt_gatt_attr *attr,
 						  void *buf, uint16_t len, uint16_t offset)
 {
-	const struct trip_entry *trips = odometer_get_trips();
 	size_t trip_count = odometer_get_trip_count();
+	struct trip_entry trip;
 
 	char out[1024];
 	size_t pos = 0;
 
-	pos += snprintf(out + pos, sizeof(out) - pos, "{\"trips\":[");
+	/* Return last 10 trips max (most recent) */
+	size_t start = (trip_count > 10) ? (trip_count - 10) : 0;
+	size_t count = trip_count - start;
+
+	pos += snprintf(out + pos, sizeof(out) - pos, "{\"total\":%zu,\"trips\":[", trip_count);
 
 	/* Output each trip */
-	for (size_t t = 0; t < trip_count; t++) {
-		const struct trip_entry *trip = &trips[t];
-		
-		if (t > 0) {
+	for (size_t t = start; t < trip_count && pos < sizeof(out) - 200; t++) {
+		if (odometer_read_trip(t, &trip) != 0) {
+			continue;
+		}
+
+		if (t > start) {
 			pos += snprintf(out + pos, sizeof(out) - pos, ",");
 		}
 
-		pos += snprintf(out + pos, sizeof(out) - pos, 
-						"{\"id\":%zu,\"startDate\":%llu,\"buckets\":[",
-						t + 1, (unsigned long long)trip->start_timestamp_ms);
-
-		/* Output buckets for this trip */
-		for (size_t b = 0; b < trip->bucket_count; b++) {
-			if (b > 0) {
-				pos += snprintf(out + pos, sizeof(out) - pos, ",");
-			}
-			pos += snprintf(out + pos, sizeof(out) - pos, "%u", trip->buckets[b]);
-		}
-
-		pos += snprintf(out + pos, sizeof(out) - pos, "]}");
+		pos += snprintf(out + pos, sizeof(out) - pos,
+						"{\"id\":%zu,\"ts\":%llu,\"n\":%u}",
+						t + 1, (unsigned long long)trip.start_timestamp_ms,
+						trip.bucket_count);
 	}
 
 	pos += snprintf(out + pos, sizeof(out) - pos, "]}\n");
@@ -117,6 +138,12 @@ static struct bt_uuid_128 bike_trips_uuid = BT_UUID_INIT_128(
 
 static struct bt_uuid_128 bike_battery_uuid = BT_UUID_INIT_128(
 	0x8A,0x56,0x34,0x12,0x34,0x12,0x78,0x56,0x12,0x34,0x56,0x78,0x12,0x34,0x56,0x78);
+
+static struct bt_uuid_128 bike_time_uuid = BT_UUID_INIT_128(
+	0x8B,0x56,0x34,0x12,0x34,0x12,0x78,0x56,0x12,0x34,0x56,0x78,0x12,0x34,0x56,0x78);
+
+static struct bt_uuid_128 bike_odometer_uuid = BT_UUID_INIT_128(
+	0x8C,0x56,0x34,0x12,0x34,0x12,0x78,0x56,0x12,0x34,0x56,0x78,0x12,0x34,0x56,0x78);
 
 /* Characteristic Presentation Format: UTF-8 string */
 static const struct bt_gatt_cpf trips_cpf = {
@@ -143,6 +170,72 @@ static const struct bt_gatt_cpf battery_cpf = {
 	.description = 0x0000,
 };
 
+static const struct bt_gatt_cpf time_cpf = {
+	.format = 0x08,  /* uint64 */
+	.exponent = 0,
+	.unit = 0x2703,  /* seconds */
+	.name_space = 0x01,
+	.description = 0x0000,
+};
+
+static const struct bt_gatt_cpf odometer_cpf = {
+	.format = 0x19,  /* UTF-8 string (JSON) */
+	.exponent = 0,
+	.unit = 0x2700,
+	.name_space = 0x01,
+	.description = 0x0000,
+};
+
+/*
+ * BLE read handler for time
+ */
+static ssize_t read_time(struct bt_conn *conn,
+						 const struct bt_gatt_attr *attr,
+						 void *buf, uint16_t len, uint16_t offset)
+{
+	uint64_t unix_time = rtc_get_time();
+
+	char str[32];
+	int n = snprintf(str, sizeof(str), "%llu", (unsigned long long)unix_time);
+	if (n < 0) {
+		return BT_GATT_ERR(BT_ATT_ERR_UNLIKELY);
+	}
+
+	return bt_gatt_attr_read(conn, attr, buf, len, offset, str, (size_t)n);
+}
+
+/*
+ * BLE write handler for time
+ */
+static ssize_t write_time(struct bt_conn *conn,
+						  const struct bt_gatt_attr *attr,
+						  const void *buf, uint16_t len,
+						  uint16_t offset, uint8_t flags)
+{
+	if (offset != 0) {
+		return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
+	}
+
+	/* Parse unix timestamp from string */
+	char str[32];
+	if (len >= sizeof(str)) {
+		return BT_GATT_ERR(BT_ATT_ERR_INVALID_ATTRIBUTE_LEN);
+	}
+
+	memcpy(str, buf, len);
+	str[len] = '\0';
+
+	uint64_t unix_time = strtoull(str, NULL, 10);
+	if (unix_time == 0) {
+		return BT_GATT_ERR(BT_ATT_ERR_VALUE_NOT_ALLOWED);
+	}
+
+	rtc_set_time(unix_time);
+	printk("BLE: Time set to %llu\n", (unsigned long long)unix_time);
+
+	return len;
+}
+
 /* GATT service definition */
 BT_GATT_SERVICE_DEFINE(bike_svc,
 	BT_GATT_PRIMARY_SERVICE(&bike_svc_uuid.uuid),
@@ -164,6 +257,18 @@ BT_GATT_SERVICE_DEFINE(bike_svc,
 						   read_battery, NULL, NULL),
 	BT_GATT_CUD("Battery", BT_GATT_PERM_READ),
 	BT_GATT_CPF(&battery_cpf),
+	BT_GATT_CHARACTERISTIC(&bike_time_uuid.uuid,
+						   BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE,
+						   BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
+						   read_time, write_time, NULL),
+	BT_GATT_CUD("Unix Time", BT_GATT_PERM_READ),
+	BT_GATT_CPF(&time_cpf),
+	BT_GATT_CHARACTERISTIC(&bike_odometer_uuid.uuid,
+						   BT_GATT_CHRC_READ,
+						   BT_GATT_PERM_READ,
+						   read_odometer, NULL, NULL),
+	BT_GATT_CUD("Odometer", BT_GATT_PERM_READ),
+	BT_GATT_CPF(&odometer_cpf),
 );
 
 /* Advertising data */

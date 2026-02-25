@@ -7,10 +7,12 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
+#include <zephyr/settings/settings.h>
 
 #include "battery.h"
 #include "odometer.h"
 #include "ble_service.h"
+#include "rtc.h"
 
 int main(void)
 {
@@ -36,6 +38,17 @@ int main(void)
 
 	/* Load saved data from NVM */
 	odometer_load_from_nvm();
+
+	/* Initialize settings subsystem (for RTC) and load */
+	err = settings_subsys_init();
+	if (err) {
+		printk("Settings init failed (err %d)\n", err);
+	} else {
+		settings_load();
+	}
+
+	/* Initialize RTC (after settings loaded) */
+	rtc_init();
 
 	/* Initialize odometer (pulse GPIO and bin timer) */
 	err = odometer_init();
