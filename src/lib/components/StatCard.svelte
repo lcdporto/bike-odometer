@@ -9,10 +9,19 @@
 		subtitle?: string;
 		icon: Component;
 		variant?: 'default' | 'primary' | 'accent';
+		iconAlign?: 'top' | 'center';
 		class?: string;
 	}
 	
-	let { title, value, subtitle, icon: Icon, variant = 'default', class: className }: Props = $props();
+	let {
+		title,
+		value,
+		subtitle,
+		icon: Icon,
+		variant = 'default',
+		iconAlign = 'top',
+		class: className
+	}: Props = $props();
 </script>
 
 <Card
@@ -24,12 +33,12 @@
 	)}
 >
 	<CardContent class="p-3">
-		<div class="flex items-start justify-between">
+		<div class={cn('flex justify-between', iconAlign === 'center' ? 'items-center' : 'items-start')}>
 			<div class="space-y-0.5">
 				<p class="text-xs text-muted-foreground">{title}</p>
 				<p
 					class={cn(
-						'text-xl font-bold font-mono tracking-tight',
+						'text-xl font-bold font-mono tracking-tight whitespace-nowrap',
 						variant === 'primary' && 'text-primary',
 						variant === 'accent' && 'text-accent',
 						variant === 'default' && 'text-foreground'

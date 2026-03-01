@@ -5,20 +5,40 @@
 	import StatCard from '$lib/components/StatCard.svelte';
 	import { initializeAppDataFromSensors } from '$lib/state/app-state';
 	import { sensorState } from '$lib/stores/sensor.svelte';
-	import { calculateDistance, formatDistanceKm } from '$lib/utils';
+	import { tripsState } from '$lib/stores/trips.svelte';
+	import { calculateDistance, formatDistanceKm, formatDurationDhm } from '$lib/utils';
 	import { CircleDot, Timer, TrendingUp } from '@lucide/svelte';
 	import { onMount } from 'svelte';
 
-	let distanceData = $derived(sensorState.rotationBuckets.map((bucket, index) => {
-		const cumulativeRotations = sensorState.rotationBuckets
-			.slice(0, index + 1)
-			.reduce((sum, b) => sum + b.rotations, 0);
-		const distance = calculateDistance(cumulativeRotations, sensorState.wheelCircumference);
-		return {
-			time: bucket.time,
-			distance: Number.parseFloat(distance.toFixed(2))
-		};
-	}));
+	let allBuckets = $derived.by(() => {
+		return tripsState.trips
+			.flatMap((trip) => trip.buckets)
+			.sort((a, b) => a.timestamp - b.timestamp);
+	});
+
+	function formatTimelineLabel(timestamp: number): string {
+		const date = new Date(timestamp);
+		return date.toLocaleString('en-US', {
+			month: 'short',
+			day: 'numeric'
+		});
+	}
+
+	let totalRotations = $derived(allBuckets.reduce((sum, bucket) => sum + bucket.rotations, 0));
+	let totalDistance = $derived(calculateDistance(totalRotations, sensorState.wheelCircumference));
+	let totalMinutes = $derived(allBuckets.length * 5);
+
+	let distanceData = $derived.by(() => {
+		let cumulativeRotations = 0;
+		return allBuckets.map((bucket) => {
+			cumulativeRotations += bucket.rotations;
+			const distance = calculateDistance(cumulativeRotations, sensorState.wheelCircumference);
+			return {
+				time: formatTimelineLabel(bucket.timestamp),
+				distance: Number.parseFloat(distance.toFixed(2))
+			};
+		});
+	});
 
 	onMount(() => {
 		initializeAppDataFromSensors();
@@ -32,15 +52,15 @@
 </script>
 
 <div class="flex h-full flex-col gap-4">
-	<div class="grid grid-cols-3 gap-3">
+	<div class="grid grid-cols-2 gap-3">
 		<StatCard
 			title="Distance"
-			value="{formatDistanceKm(sensorState.totalDistance)} km"
+			value="{formatDistanceKm(totalDistance)} km"
 			icon={TrendingUp}
 			variant="primary"
-			class="col-span-2"
+			iconAlign="center"
 		/>
-		<StatCard title="Duration" value="{sensorState.totalMinutes}m" icon={Timer} variant="default" />
+		<StatCard title="Duration" value={formatDurationDhm(totalMinutes)} icon={Timer} variant="default" iconAlign="center" />
 	</div>
 
 	<div class="flex-1 min-h-0">
@@ -49,6 +69,6 @@
 
 	<div class="flex items-center justify-center gap-2 text-xs text-muted-foreground">
 		<CircleDot class="h-3 w-3" />
-		<span>{sensorState.totalRotations.toLocaleString()} rotations</span>
+		<span>{totalRotations.toLocaleString()} rotations</span>
 	</div>
 </div>

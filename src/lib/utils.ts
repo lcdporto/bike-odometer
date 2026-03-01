@@ -50,6 +50,29 @@ export function formatDistanceKm(km: number, decimals: number = 2): string {
 }
 
 /**
+ * Format a duration in minutes to d/h/m (e.g. 1d 12h 6m)
+ */
+export function formatDurationDhm(totalMinutes: number): string {
+	const safeMinutes = Math.max(0, Math.floor(totalMinutes));
+	const days = Math.floor(safeMinutes / (24 * 60));
+	const hours = Math.floor((safeMinutes % (24 * 60)) / 60);
+	const minutes = safeMinutes % 60;
+
+	const parts: string[] = [];
+	if (days > 0) {
+		parts.push(`${days}d`);
+	}
+	if (hours > 0 || days > 0) {
+		parts.push(`${hours}h`);
+	}
+	if (minutes > 0 || parts.length === 0) {
+		parts.push(`${minutes}m`);
+	}
+
+	return parts.join(' ');
+}
+
+/**
  * Detect whether a BLE device name is missing or just a placeholder label
  */
 export function isPlaceholderDeviceName(name: string | null | undefined): boolean {
