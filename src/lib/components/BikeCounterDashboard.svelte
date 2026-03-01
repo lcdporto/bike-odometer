@@ -2,7 +2,6 @@
 	import { Select, SelectContent, SelectItem, SelectTrigger } from '$lib/components/ui/select';
 	import { WHEEL_SIZES } from '$lib/config/wheels';
 	import { initializeAppDataFromSensors } from '$lib/state/app-state';
-	import type { Sensor } from '$lib/stores/sensor.svelte';
 	import { sensorState } from '$lib/stores/sensor.svelte';
 	import type { Trip } from '$lib/stores/trips.svelte';
 	import { tripsState } from '$lib/stores/trips.svelte';
@@ -74,7 +73,7 @@
 		view = 'trip-detail';
 	}
 	
-	function handleSensorConnect(sensor: Sensor) {
+	function handleSensorConnect() {
 		view = 'current';
 	}
 	

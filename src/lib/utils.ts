@@ -48,3 +48,25 @@ export function calculateDistance(rotations: number, wheelCircumferenceMeters: n
 export function formatDistanceKm(km: number, decimals: number = 2): string {
 	return km.toFixed(decimals);
 }
+
+/**
+ * Detect whether a BLE device name is missing or just a placeholder label
+ */
+export function isPlaceholderDeviceName(name: string | null | undefined): boolean {
+	if (!name) return true;
+	const trimmed = name.trim();
+	if (!trimmed) return true;
+	const normalized = trimmed.toLowerCase();
+	return normalized === '(unnamed)' || normalized === 'unnamed' || normalized === 'unknown';
+}
+
+/**
+ * Return a stable display label for BLE devices
+ */
+export function resolveDisplaySensorName(name: string | null | undefined, id: string): string {
+	if (!isPlaceholderDeviceName(name)) {
+		return name!.trim();
+	}
+
+	return id;
+}

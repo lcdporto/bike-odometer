@@ -1,11 +1,11 @@
 <script lang="ts">
-	import { Button } from '$lib/components/ui/button';
 	import type { Sensor } from '$lib/stores/sensor.svelte';
 	import { Bluetooth, BluetoothSearching, Loader2, Signal, SignalLow, SignalMedium, Clock } from '@lucide/svelte';
 	import { getAllSensors, getSensorWithTrips } from '$lib/persistence/sqlite';
 	import { sensorState } from '$lib/stores/sensor.svelte';
 	import { tripsState } from '$lib/stores/trips.svelte';
 	import { bleDevicesState } from '$lib/stores/ble-devices.svelte';
+	import { resolveDisplaySensorName } from '$lib/utils';
 	
 	interface Props {
 		onConnect: (sensor: Sensor) => void;
@@ -20,6 +20,7 @@
 	
 	// Get connected devices from store
 	let connectedDevices = $derived(bleDevicesState.connectedDevices);
+	let isBackgroundScanning = $derived(bleDevicesState.isScanning);
 	
 	// Filter historical sensors to exclude currently connected ones
 	let filteredHistoricalSensors = $derived(
@@ -132,10 +133,6 @@
 		}
 	}
 	
-	async function handleRefresh() {
-		await loadHistoricalSensorsFromDB();
-	}
-	
 	// Load historical sensors on mount
 	$effect(() => {
 		loadHistoricalSensorsFromDB();
@@ -144,7 +141,7 @@
 
 <div class="flex h-dvh flex-col bg-background">
 	<header
-		style:padding-top={"max(env(safe-area-inset-top), 16px)"}
+		style:padding-top="max(env(safe-area-inset-top), 16px)"
 		class="flex items-center justify-center border-b border-border px-4 py-4">
 		<div class="flex items-center gap-3">
 			<div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
@@ -176,7 +173,12 @@
 			<div class="flex flex-1 flex-col items-center justify-center gap-4">
 				<Bluetooth class="h-16 w-16 text-muted-foreground/50" />
 				<p class="text-sm text-muted-foreground">No sensors found</p>
-				<Button variant="outline" onclick={handleRefresh}>Refresh</Button>
+				{#if isBackgroundScanning}
+					<div class="flex items-center gap-2 text-xs text-muted-foreground">
+						<Loader2 class="h-3.5 w-3.5 animate-spin" />
+						<span>Scanning for sensors...</span>
+					</div>
+				{/if}
 			</div>
 		{:else}
 			<div class="flex flex-1 flex-col gap-4 overflow-y-auto">
@@ -199,7 +201,7 @@
 										<Bluetooth class="h-5 w-5 text-primary" />
 									</div>
 									<div class="flex-1">
-										<p class="font-medium text-foreground">{sensor.name}</p>
+										<p class="font-medium text-foreground">{resolveDisplaySensorName(sensor.name, sensor.id)}</p>
 										<p class="text-xs text-muted-foreground">Signal: {sensor.signalStrength}%</p>
 									</div>
 									<div class="flex items-center gap-2">
@@ -229,7 +231,12 @@
 							<h2 class="text-sm font-semibold text-foreground">Historical Devices</h2>
 							<div class="flex items-center gap-2">
 								<span class="text-xs text-muted-foreground">{filteredHistoricalSensors.length}</span>
-								<Button variant="ghost" size="sm" onclick={handleRefresh} class="text-xs h-7">Refresh</Button>
+								{#if isBackgroundScanning}
+									<div class="flex items-center gap-1 text-xs text-muted-foreground">
+										<Loader2 class="h-3.5 w-3.5 animate-spin" />
+										<span>Scanning...</span>
+									</div>
+								{/if}
 							</div>
 						</div>
 						
@@ -244,7 +251,7 @@
 										<Bluetooth class="h-5 w-5 text-muted-foreground" />
 									</div>
 									<div class="flex-1">
-										<p class="font-medium text-foreground">{sensor.name}</p>
+										<p class="font-medium text-foreground">{resolveDisplaySensorName(sensor.name, sensor.id)}</p>
 										<div class="flex items-center gap-1 text-xs text-muted-foreground">
 											<Clock class="h-3 w-3" />
 											<span>{sensor.lastSeen ? formatTimeAgo(sensor.lastSeen) : 'Unknown'}</span>
@@ -267,7 +274,7 @@
 	</main>
 	
 	<footer
-		style:padding-bottom={"max(env(safe-area-inset-bottom), 12px)"}
+		style:padding-bottom="max(env(safe-area-inset-bottom), 12px)"
 		class="border-t border-border px-4 py-3">
 		<p class="text-center text-xs text-muted-foreground">
 			Sensors are discovered automatically in the background

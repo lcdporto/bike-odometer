@@ -3,24 +3,25 @@
 	import { tripsState } from '$lib/stores/trips.svelte';
 	import { sensorState } from '$lib/stores/sensor.svelte';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 
 	let tripId = $derived(page.params.id);
 	let trip = $derived(tripId ? tripsState.getTripById(tripId) ?? null : null);
 
 	function handleBack() {
-		goto('/history');
+		goto(resolve('/history'));
 	}
 
 	$effect(() => {
 		if (!sensorState.isConnected) {
-			goto('/pairing');
+			goto(resolve('/pairing'));
 		}
 	});
 
 	$effect(() => {
 		if (!trip && tripsState.count > 0) {
-			goto('/history');
+			goto(resolve('/history'));
 		}
 	});
 </script>

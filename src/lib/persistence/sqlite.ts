@@ -1,7 +1,7 @@
 import { CapacitorSQLite, SQLiteConnection, type SQLiteDBConnection } from '@capacitor-community/sqlite';
 import type { Sensor } from '$lib/stores/sensor.svelte';
 import type { Trip } from '$lib/stores/trips.svelte';
-import { formatTime24h, getWheelCircumference, calculateDistance } from '$lib/utils';
+import { formatTime24h, getWheelCircumference, calculateDistance, isPlaceholderDeviceName } from '$lib/utils';
 
 const DB_NAME = 'cycleSensor';
 let sqlite: SQLiteConnection | undefined = undefined;
@@ -197,10 +197,23 @@ async function loadTripsForSensor(sensorId: string): Promise<Trip[]> {
 
 export async function saveSensorDescriptor(sensor: Sensor, wheelSize: string, trips: Trip[]) {
 	const now = Date.now();
+
+	let sensorName = sensor.name;
+	if (isPlaceholderDeviceName(sensorName)) {
+		const existing = await query<{ name: string }>(
+			`SELECT name FROM sensors WHERE id = ? LIMIT 1;`,
+			[sensor.id]
+		);
+		const existingName = existing[0]?.name;
+		if (!isPlaceholderDeviceName(existingName)) {
+			sensorName = existingName;
+		}
+	}
+
 	await run(
 		`INSERT OR REPLACE INTO sensors (id, name, strength, wheel_size, last_seen)
 		 VALUES (?, ?, ?, ?, ?);`,
-		[sensor.id, sensor.name, sensor.signalStrength, wheelSize, now]
+		[sensor.id, sensorName, sensor.signalStrength, wheelSize, now]
 	);
 
 	for (const trip of trips) {

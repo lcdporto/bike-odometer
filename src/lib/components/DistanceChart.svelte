@@ -1,5 +1,4 @@
 <script lang="ts">
-	import TrendingUpIcon from '@lucide/svelte/icons/trending-up';
 	import { curveNatural } from 'd3-shape';
 	import { LineChart } from 'layerchart';
 	import * as Card from '$lib/components/ui/card';
@@ -35,12 +34,6 @@
 		}
 	]);
 
-	const totalDistance = $derived(chartData.at(-1)?.distance ?? 0);
-	const startingDistance = $derived(chartData.at(0)?.distance ?? 0);
-	const distanceDelta = $derived(totalDistance - startingDistance);
-	const percentChange = $derived(
-		startingDistance > 0 ? (distanceDelta / startingDistance) * 100 : 0
-	);
 </script>
 
 <Card.Root class={cn('flex flex-col bg-card border-border', className)}>

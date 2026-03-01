@@ -33,7 +33,7 @@
 	));
 </script>
 
-<Card.Root>
+<Card.Root class={className}>
   <Card.Header>
 		<Card.Title>Distance per Interval</Card.Title>
 		<Card.Description>Meters traveled each 5-min bucket</Card.Description>

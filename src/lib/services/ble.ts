@@ -1,4 +1,5 @@
 import { BleClient, type BleDevice, type ScanResult } from '@capacitor-community/bluetooth-le';
+import { isPlaceholderDeviceName } from '$lib/utils';
 
 // UUID constants from ESP32 firmware
 const SERVICE_UUID = '6a4e3200-9b5f-4c6a-9b7a-01c9b0a00001';
@@ -48,7 +49,8 @@ export async function scanForESP32Sensors(scanDurationMs: number = 5000): Promis
 			},
 			(result: ScanResult) => {
 				const deviceId = result.device.deviceId;
-				const deviceName = result.device.name || '(unnamed)';
+				const rawName = result.device.name?.trim();
+				const deviceName = isPlaceholderDeviceName(rawName) ? '(unnamed)' : rawName!;
 				const rssi = result.rssi ?? -100;
 
 				console.log(`[BLE] Device found: "${deviceName}" | ID: ${deviceId} | RSSI: ${rssi}dBm | Services: ${result.uuids?.join(', ') || 'none'}`);

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import DistanceChart from '$lib/components/DistanceChart.svelte';
 	import StatCard from '$lib/components/StatCard.svelte';
 	import { initializeAppDataFromSensors } from '$lib/state/app-state';
@@ -25,7 +26,7 @@
 
 	$effect(() => {
 		if (!sensorState.isConnected) {
-			goto('/pairing');
+			goto(resolve('/pairing'));
 		}
 	});
 </script>

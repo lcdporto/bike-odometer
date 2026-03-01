@@ -1,12 +1,13 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { sensorState } from '$lib/stores/sensor.svelte';
 
 	$effect(() => {
 		if (sensorState.isConnected) {
-			goto('/current');
+			goto(resolve('/current'));
 		} else {
-			goto('/pairing');
+			goto(resolve('/pairing'));
 		}
 	});
 </script>

@@ -125,6 +125,7 @@ async function performScan() {
 	
 	try {
 		isScanning = true;
+		bleDevicesState.setScanning(true);
 		console.log('Starting BLE scan...');
 		
 		const sensors = await scanForESP32Sensors(SCAN_DURATION);
@@ -154,6 +155,7 @@ async function performScan() {
 		console.error('Scan failed:', error);
 	} finally {
 		isScanning = false;
+		bleDevicesState.setScanning(false);
 	}
 }
 
@@ -195,6 +197,7 @@ export function stopBackgroundScanning() {
 	if (scanInterval !== null) {
 		clearInterval(scanInterval);
 		scanInterval = null;
+		bleDevicesState.setScanning(false);
 		console.log('Background scanning stopped');
 	}
 }
