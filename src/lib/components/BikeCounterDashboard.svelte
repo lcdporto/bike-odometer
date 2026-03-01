@@ -1,33 +1,33 @@
 <script lang="ts">
-	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Select, SelectContent, SelectItem, SelectTrigger } from '$lib/components/ui/select';
+	import { WHEEL_SIZES } from '$lib/config/wheels';
+	import { initializeAppDataFromSensors } from '$lib/state/app-state';
+	import type { Sensor } from '$lib/stores/sensor.svelte';
+	import { sensorState } from '$lib/stores/sensor.svelte';
+	import type { Trip } from '$lib/stores/trips.svelte';
+	import { tripsState } from '$lib/stores/trips.svelte';
+	import { calculateDistance, formatDistanceKm, getWheelCircumference } from '$lib/utils';
 	import { BarChart3, Bike, Bluetooth, CircleDot, History, Timer, TrendingUp } from '@lucide/svelte';
+	import DistanceChart from './DistanceChart.svelte';
 	import SensorSelector from './SensorSelector.svelte';
 	import StatCard from './StatCard.svelte';
 	import TripDetail from './TripDetail.svelte';
-	import DistanceChart from './DistanceChart.svelte';
-	import type { Trip } from '$lib/stores/trips.svelte';
 	import TripHistory from './TripHistory.svelte';
-	import { WHEEL_SIZES, DEFAULT_WHEEL_SIZE } from '$lib/config/wheels';
-	import { sensorState, disconnectSensor, setWheelSize } from '$lib/stores/sensor.svelte';
-	import { tripsState } from '$lib/stores/trips.svelte';
-	import { initializeAppDataFromSensors } from '$lib/state/app-state';
-	import type { Sensor } from '$lib/stores/sensor.svelte';
 	
 	type View = 'pairing' | 'current' | 'history' | 'trip-detail';
 	
 	let view = $state<View>('pairing');
 	let selectedTrip = $state<Trip | null>(null);
 	
-	let wheelCircumference = $derived((Number.parseInt(sensorState.wheelSize) * Math.PI) / 1000);
+	let wheelCircumference = $derived(getWheelCircumference(sensorState.wheelSize));
 	
 	// Calculate totals from ALL trips, not just rotation buckets
 	let allBuckets = $derived.by(() => {
-		return tripsState.flatMap(trip => trip.buckets);
+		return tripsState.trips.flatMap(trip => trip.buckets);
 	});
 	
 	let totalRotations = $derived(allBuckets.reduce((sum, bucket) => sum + bucket.rotations, 0));
-	let totalDistance = $derived((totalRotations * wheelCircumference) / 1000);
+	let totalDistance = $derived(calculateDistance(totalRotations, wheelCircumference));
 	let totalMinutes = $derived(allBuckets.length * 5);
 	
 	// Log state for debugging
@@ -36,7 +36,7 @@
 			isConnected: sensorState.isConnected,
 			sensor: sensorState.connectedSensor?.name,
 			wheelSize: sensorState.wheelSize,
-			tripCount: tripsState.length,
+			tripCount: tripsState.count,
 			bucketCount: allBuckets.length,
 			totalRotations,
 			totalDistance,
@@ -47,7 +47,7 @@
 	// Calculate cumulative distance data for the chart from all trips
 	let cumulativeDistanceData = $derived.by(() => {
 		let cumulative = 0;
-		const allBucketsWithTrip = tripsState.flatMap(trip => 
+		const allBucketsWithTrip = tripsState.trips.flatMap(trip => 
 			trip.buckets.map(bucket => ({
 				...bucket,
 				tripId: trip.id
@@ -55,7 +55,7 @@
 		).sort((a, b) => a.timestamp - b.timestamp); // Sort by timestamp to ensure chronological order
 		
 		return allBucketsWithTrip.map((bucket) => {
-			const distanceThisBucket = (bucket.rotations * wheelCircumference) / 1000;
+				const distanceThisBucket = calculateDistance(bucket.rotations, sensorState.wheelCircumference);
 			cumulative += distanceThisBucket;
 			return {
 				time: bucket.time,
@@ -79,12 +79,12 @@
 	}
 	
 	function handleDisconnect() {
-		disconnectSensor();
+		sensorState.disconnectSensor();
 		view = 'pairing';
 	}
 	
 	function handleWheelSizeChange(newSize: string) {
-		setWheelSize(newSize);
+		sensorState.setWheelSize(newSize);
 	}
 </script>
 
@@ -128,8 +128,7 @@
 					<div class="grid grid-cols-3 gap-3">
 						<StatCard
 							title="Distance"
-							value="{totalDistance.toFixed(2)} km"
-							subtitle="{(totalDistance * 0.621371).toFixed(2)} mi"
+							value="{formatDistanceKm(totalDistance)} km"
 							icon={TrendingUp}
 							variant="primary"
 							class="col-span-2"
@@ -147,7 +146,7 @@
 					</div>
 				</div>
 			{:else if view === 'history'}
-				<TripHistory trips={tripsState} onTripSelect={handleTripSelect} />
+				<TripHistory trips={tripsState.trips} onTripSelect={handleTripSelect} />
 			{:else if view === 'trip-detail' && selectedTrip}
 				<TripDetail
 					trip={selectedTrip}

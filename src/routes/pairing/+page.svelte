@@ -1,10 +1,10 @@
 <script lang="ts">
 	import SensorSelector from '$lib/components/SensorSelector.svelte';
-	import { connectSensor, type Sensor } from '$lib/stores/sensor.svelte';
+	import { sensorState, type Sensor } from '$lib/stores/sensor.svelte';
 	import { goto } from '$app/navigation';
 
 	function handleSensorConnect(sensor: Sensor) {
-		connectSensor(sensor);
+		sensorState.connectSensor(sensor);
 		goto('/current');
 	}
 </script>

@@ -4,6 +4,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import type { Trip } from '$lib/stores/trips.svelte';
 	import { ArrowLeft, Clock, Gauge, MapPin } from '@lucide/svelte';
+	import { calculateDistance, formatDistanceKm } from '$lib/utils';
 	
 	interface Props {
 		trip: Trip;
@@ -31,7 +32,7 @@
 	
 	let distancePerBucket = $derived(
 		trip.buckets.map((bucket) => {
-			const distance = (bucket.rotations * wheelCircumference) / 1000;
+			const distance = calculateDistance(bucket.rotations, wheelCircumference);
 			return {
 				time: ensureTime24h(bucket.time),
 				distance: Number.parseFloat((distance * 1000).toFixed(0))
@@ -58,7 +59,7 @@
 	<div class="grid grid-cols-3 gap-3">
 		<div class="flex flex-col items-center rounded-xl bg-card border border-border p-3">
 			<MapPin class="h-4 w-4 text-primary mb-1" />
-			<span class="text-lg font-bold text-foreground">{trip.distance.toFixed(2)}</span>
+			<span class="text-lg font-bold text-foreground">{formatDistanceKm(trip.distance)}</span>
 			<span class="text-xs text-muted-foreground">km</span>
 		</div>
 		<div class="flex flex-col items-center rounded-xl bg-card border border-border p-3">

@@ -1,68 +1,52 @@
 import type { Sensor } from './sensor.svelte';
 
-interface ConnectedDevice extends Sensor {
-	lastSeen: number;
+export interface ConnectedDevice extends Sensor {
+lastSeen: number;
 }
 
-interface BLEDevicesState {
-	connectedDevices: ConnectedDevice[];
+class BLEDevicesStore {
+connectedDevices = $state<ConnectedDevice[]>([]);
+
+// Derived values
+count = $derived(this.connectedDevices.length);
+
+// Actions
+updateConnectedDevice(sensor: Sensor) {
+const existingIndex = this.connectedDevices.findIndex((d) => d.id === sensor.id);
+
+if (existingIndex !== -1) {
+// Update existing device
+this.connectedDevices[existingIndex] = {
+...sensor,
+lastSeen: Date.now()
+};
+} else {
+// Add new device
+this.connectedDevices = [...this.connectedDevices, {
+...sensor,
+lastSeen: Date.now()
+}];
+}
 }
 
-export const bleDevicesState: BLEDevicesState = $state({
-	connectedDevices: []
-});
-
-/**
- * Add or update a device in the connected devices list
- */
-export function updateConnectedDevice(sensor: Sensor) {
-	const existingIndex = bleDevicesState.connectedDevices.findIndex((d) => d.id === sensor.id);
-	
-	if (existingIndex !== -1) {
-		// Update existing device
-		bleDevicesState.connectedDevices[existingIndex] = {
-			...sensor,
-			lastSeen: Date.now()
-		};
-	} else {
-		// Add new device
-		bleDevicesState.connectedDevices.push({
-			...sensor,
-			lastSeen: Date.now()
-		});
-	}
+removeConnectedDevice(deviceId: string) {
+this.connectedDevices = this.connectedDevices.filter((d) => d.id !== deviceId);
 }
 
-/**
- * Remove a device from connected devices list
- */
-export function removeConnectedDevice(deviceId: string) {
-	const index = bleDevicesState.connectedDevices.findIndex((d) => d.id === deviceId);
-	if (index !== -1) {
-		bleDevicesState.connectedDevices.splice(index, 1);
-	}
+getConnectedDevice(deviceId: string): ConnectedDevice | undefined {
+return this.connectedDevices.find((d) => d.id === deviceId);
 }
 
-/**
- * Get a device by ID
- */
-export function getConnectedDevice(deviceId: string): ConnectedDevice | undefined {
-	return bleDevicesState.connectedDevices.find((d) => d.id === deviceId);
+clearConnectedDevices() {
+this.connectedDevices = [];
 }
 
-/**
- * Clear all connected devices (useful for cleanup)
- */
-export function clearConnectedDevices() {
-	bleDevicesState.connectedDevices.length = 0;
+removeStaleDevices(maxAgeMs: number = 60000) {
+const now = Date.now();
+this.connectedDevices = this.connectedDevices.filter(
+(device) => now - device.lastSeen < maxAgeMs
+);
+}
 }
 
-/**
- * Remove stale devices that haven't been seen in a while
- */
-export function removeStaleDevices(maxAgeMs: number = 60000) {
-	const now = Date.now();
-	bleDevicesState.connectedDevices = bleDevicesState.connectedDevices.filter(
-		(device) => now - device.lastSeen < maxAgeMs
-	);
-}
+export const bleDevicesState = new BLEDevicesStore();

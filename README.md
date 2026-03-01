@@ -36,3 +36,55 @@ npm run build
 You can preview the production build with `npm run preview`.
 
 > To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+
+## Android release signing
+
+This project is configured like `gira-mais` CI for release signing:
+
+- Gradle release signing reads:
+	- `ANDROID_STORE_PASSWORD`
+	- `ANDROID_KEY_PASSWORD`
+- Keystore path is `android/key.keystore`
+- Alias is `release`
+
+### Local release build
+
+1. Place your keystore at `android/key.keystore`.
+2. Provide passwords using either env vars or a local file:
+
+Option A (environment variables):
+
+```sh
+export ANDROID_STORE_PASSWORD='your_store_password'
+export ANDROID_KEY_PASSWORD='your_key_password'
+```
+
+Option B (recommended for local dev): create `.keys/android-signing.env`:
+
+```env
+ANDROID_STORE_PASSWORD=your_store_password
+ANDROID_KEY_PASSWORD=your_key_password
+```
+
+3. Build release:
+
+```sh
+npm run build-app
+```
+
+Signed APK is generated under:
+
+- `android/app/build/outputs/apk/release/`
+
+### GitHub Actions secrets
+
+The workflow in `.github/workflows/build-mobile.yml` expects:
+
+- `KEYSTORE_B64` (base64-encoded keystore file)
+- `ANDROID_STORE_PASSWORD`
+- `ANDROID_KEY_PASSWORD`
+
+CI outputs are published from:
+
+- `android/app/build/outputs/apk/release/`
+- `android/app/build/outputs/bundle/release/`

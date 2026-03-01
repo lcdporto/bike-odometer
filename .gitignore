@@ -24,3 +24,5 @@ vite.config.ts.timestamp-*
 
 capacitor.config.json.timestamp-*
 .keys
+*.keystore
+*.jks

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Bike, Bluetooth, BarChart3, History } from '@lucide/svelte';
 	import { Select, SelectContent, SelectItem, SelectTrigger } from '$lib/components/ui/select';
-	import { sensorState, disconnectSensor, setWheelSize } from '$lib/stores/sensor.svelte';
+	import { sensorState } from '$lib/stores/sensor.svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { WHEEL_SIZES, DEFAULT_WHEEL_SIZE } from '$lib/config/wheels';
@@ -20,12 +20,12 @@
 
 	$effect(() => {
 		if (wheelSize) {
-			setWheelSize(wheelSize);
+			sensorState.setWheelSize(wheelSize);
 		}
 	});
 
 	function handleDisconnect() {
-		disconnectSensor();
+		sensorState.disconnectSensor();
 		goto('/pairing');
 	}
 
@@ -56,6 +56,7 @@
 
 		<Select type="single" bind:value={wheelSize}>
 			<SelectTrigger class="w-[100px] bg-card text-sm">
+				{wheelSize}
 				{WHEEL_SIZES.find((s) => s.value === wheelSize)?.label || 'Wheel'}
 			</SelectTrigger>
 			<SelectContent>

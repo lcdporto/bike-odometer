@@ -2,7 +2,8 @@ import { initializeBLE, scanForESP32Sensors, readSensorDescriptor } from './ble'
 import { saveSensorDescriptor } from '$lib/persistence/sqlite';
 import type { Sensor } from '$lib/stores/sensor.svelte';
 import type { BleDevice } from '@capacitor-community/bluetooth-le';
-import { updateConnectedDevice, removeStaleDevices } from '$lib/stores/ble-devices.svelte';
+import { bleDevicesState } from '$lib/stores/ble-devices.svelte';
+import { formatTime24h, getWheelCircumference, calculateDistance } from '$lib/utils';
 
 const SCAN_INTERVAL = 10000; // 10 seconds between scans
 const SCAN_DURATION = 5000; // 5 seconds per scan
@@ -16,10 +17,22 @@ function rssiToPercentage(rssi: number): number {
 }
 
 type SensorDescriptor = {
+	/**
+	 * Wheel size in inches
+	 */
 	wheelSize: number;
 	trips: Array<{
+		/**
+		 * Trip ID
+		 */
 		id: number;
+		/**
+		 * Start date in milliseconds since 1970 epoch
+		 */
 		startDate: number;
+		/**
+		 * Number of rotations in 5 minute buckets
+		 */
 		buckets: number[];
 	}>;
 };
@@ -35,7 +48,7 @@ function inchesToWheelSizeValue(inches: number): string {
 function toRotationBucket(trip: SensorDescriptor['trips'][0], idx: number) {
 	const timestamp = trip.startDate + idx * 5 * 60 * 1000;
 	return {
-		time: new Date(timestamp).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }),
+		time: formatTime24h(new Date(timestamp)),
 		rotations: trip.buckets[idx] || 0,
 		timestamp
 	};
@@ -44,7 +57,7 @@ function toRotationBucket(trip: SensorDescriptor['trips'][0], idx: number) {
 function toTrip(trip: SensorDescriptor['trips'][0], wheelCircumference: number) {
 	const buckets = trip.buckets.map((_, idx) => toRotationBucket(trip, idx));
 	const totalRotations = buckets.reduce((sum, b) => sum + b.rotations, 0);
-	const distance = (totalRotations * wheelCircumference) / 1000;
+	const distance = calculateDistance(totalRotations, wheelCircumference);
 	const duration = buckets.length * 5;
 	const avgSpeed = duration > 0 ? (distance / duration) * 60 : 0;
 	const startDate = new Date(trip.startDate);
@@ -57,8 +70,8 @@ function toTrip(trip: SensorDescriptor['trips'][0], wheelCircumference: number) 
 			month: 'short',
 			day: 'numeric'
 		}),
-		startTime: startDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }),
-		endTime: endDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }),
+		startTime: formatTime24h(startDate),
+		endTime: formatTime24h(endDate),
 		distance,
 		duration,
 		avgSpeed,
@@ -80,7 +93,7 @@ async function processSensor(deviceId: string, deviceName: string, strength: num
 		
 		// Convert to app format
 		const wheelSize = inchesToWheelSizeValue(descriptor.wheelSize);
-		const wheelCircumference = (Number.parseInt(wheelSize) * Math.PI) / 1000;
+		const wheelCircumference = getWheelCircumference(wheelSize);
 		
 		const sensor: Sensor = {
 			id: deviceId,
@@ -128,7 +141,7 @@ async function performScan() {
 			}
 			
 			// Update connected device in store
-			updateConnectedDevice({
+			bleDevicesState.updateConnectedDevice({
 				id: sensor.macAddress,
 				name: sensor.name,
 				signalStrength: rssiToPercentage(sensor.strength)
@@ -136,7 +149,7 @@ async function performScan() {
 		}
 		
 		// Remove stale devices (not seen in last 30 seconds)
-		removeStaleDevices(30000);
+		bleDevicesState.removeStaleDevices(30000);
 	} catch (error) {
 		console.error('Scan failed:', error);
 	} finally {

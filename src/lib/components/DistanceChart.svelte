@@ -4,7 +4,7 @@
 	import { LineChart } from 'layerchart';
 	import * as Card from '$lib/components/ui/card';
 	import * as Chart from '$lib/components/ui/chart';
-	import { cn } from '$lib/utils';
+	import { cn, formatDistanceKm } from '$lib/utils';
 
 	interface DistanceDataPoint {
 		time: string;
@@ -65,7 +65,7 @@
 							},
 						},
 						yAxis: {
-							format: (v: number) => `${Number(v).toFixed(2)} km`
+							format: (v: number) => `${formatDistanceKm(Number(v))} km`
 						},
 						grid: { x: false, y: true },
 						highlight: { points: { r: 4 } },

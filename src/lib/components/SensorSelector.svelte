@@ -3,8 +3,8 @@
 	import type { Sensor } from '$lib/stores/sensor.svelte';
 	import { Bluetooth, BluetoothSearching, Loader2, Signal, SignalLow, SignalMedium, Clock } from '@lucide/svelte';
 	import { getAllSensors, getSensorWithTrips } from '$lib/persistence/sqlite';
-	import { connectSensor, setWheelSize, setRotationBuckets } from '$lib/stores/sensor.svelte';
-	import { setTrips } from '$lib/stores/trips.svelte';
+	import { sensorState } from '$lib/stores/sensor.svelte';
+	import { tripsState } from '$lib/stores/trips.svelte';
 	import { bleDevicesState } from '$lib/stores/ble-devices.svelte';
 	
 	interface Props {
@@ -109,17 +109,17 @@
 			console.log('===========================');
 			
 			// Apply to state
-			setWheelSize(sensorData.wheelSize);
-			connectSensor(sensor);
-			setTrips(sensorData.trips);
+			sensorState.setWheelSize(sensorData.wheelSize);
+			sensorState.connectSensor(sensor);
+			tripsState.setTrips(sensorData.trips);
 			
 			// Set rotation buckets from latest trip
 			if (sensorData.trips.length > 0) {
 				const latestTrip = sensorData.trips[0];
-				setRotationBuckets(latestTrip.buckets);
+				sensorState.setRotationBuckets(latestTrip.buckets);
 				console.log('Set rotation buckets:', latestTrip.buckets.length, 'buckets');
 			} else {
-				setRotationBuckets([]);
+				sensorState.setRotationBuckets([]);
 				console.log('No trips found, set empty rotation buckets');
 			}
 			

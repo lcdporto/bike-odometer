@@ -1,20 +1,16 @@
 import { loadLatestSensorWithTrips } from '$lib/persistence/sqlite';
-import { connectSensor, setRotationBuckets, setWheelSize, sensorState } from '$lib/stores/sensor.svelte';
-import { setTrips, tripsState } from '$lib/stores/trips.svelte';
+import { sensorState } from '$lib/stores/sensor.svelte';
+import { tripsState } from '$lib/stores/trips.svelte';
+import { getWheelCircumference } from '$lib/utils';
 
-export function getWheelCircumference(size: string): number {
-	const parsed = Number.parseInt(size, 10);
-	// Convert diameter in inches to circumference in meters
-	// diameter (inches) × π × 0.0254 (inches to meters)
-	return Number.isFinite(parsed) ? (parsed * Math.PI * 0.0254) : 0;
-}
+export { getWheelCircumference };
 
 /**
  * Load the most recently seen sensor from the database and apply to state
  */
 export async function initializeAppDataFromSensors() {
 	// Don't re-initialize if already connected
-	if (sensorState.isConnected && tripsState.length > 0) return;
+	if (sensorState.isConnected && tripsState.count > 0) return;
 	
 	try {
 		const data = await loadLatestSensorWithTrips();
@@ -25,16 +21,16 @@ export async function initializeAppDataFromSensors() {
 		}
 		
 		// Apply to state
-		setWheelSize(data.wheelSize);
-		connectSensor(data.sensor);
-		setTrips(data.trips);
+		sensorState.setWheelSize(data.wheelSize);
+		sensorState.connectSensor(data.sensor);
+		tripsState.setTrips(data.trips);
 		
 		// Set rotation buckets from latest trip
 		if (data.trips.length > 0) {
 			const latestTrip = data.trips[0];
-			setRotationBuckets(latestTrip.buckets);
+			sensorState.setRotationBuckets(latestTrip.buckets);
 		} else {
-			setRotationBuckets([]);
+			sensorState.setRotationBuckets([]);
 		}
 		
 		console.log('Initialized app data from latest sensor:', data.sensor.name);

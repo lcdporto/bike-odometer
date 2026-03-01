@@ -4,6 +4,7 @@ import os from 'os';
 
 const dev = process.argv.includes('--dev');
 const install = process.argv.includes('--install');
+const signingEnvPath = './.keys/android-signing.env';
 
 (async () => {
 	try {
@@ -11,9 +12,15 @@ const install = process.argv.includes('--install');
 			await syncNetworkConfig();
 			await updateAppId(true);
 		} else {
+			await ensureAndroidSigningEnv();
 			await execCommand('vite build && npx cap sync');
 		}
-		await execCommand(`cd android && ${os.platform() === 'win32' ? 'gradlew' : './gradlew'} ${install ? 'installDebug' : 'assembleDebug'}`);
+		const variant = dev ? 'debug' : 'release';
+		const variantCap = dev ? 'Debug' : 'Release';
+		await execCommand(`cd android && ${os.platform() === 'win32' ? 'gradlew' : './gradlew'} assemble${variantCap}`);
+		if (install) {
+			await installApk(variant);
+		}
 		if (dev) await updateAppId();
 	} catch (e) {
 		await updateAppId();
@@ -23,6 +30,44 @@ const install = process.argv.includes('--install');
 		process.exit(-1);
 	}
 })();
+
+async function ensureAndroidSigningEnv() {
+	const required = ['ANDROID_STORE_PASSWORD', 'ANDROID_KEY_PASSWORD'];
+	if (required.every(key => process.env[key])) return;
+
+	await loadSigningEnvFromFile();
+
+	const missing = required.filter(key => !process.env[key]);
+	if (missing.length === 0) return;
+
+	throw new Error(
+		`Missing Android signing values: ${missing.join(', ')}. ` +
+		`Set env vars or create ${signingEnvPath} with KEY=VALUE pairs.`
+	);
+}
+
+async function loadSigningEnvFromFile() {
+	try {
+		const content = await fs.readFile(signingEnvPath, 'utf8');
+		for (const line of content.split(/\r?\n/)) {
+			const trimmed = line.trim();
+			if (!trimmed || trimmed.startsWith('#')) continue;
+			const index = trimmed.indexOf('=');
+			if (index <= 0) continue;
+			const key = trimmed.slice(0, index).trim();
+			const value = trimmed.slice(index + 1).trim();
+			if (!process.env[key] && value) process.env[key] = value;
+		}
+	} catch {
+		// local signing file is optional
+	}
+}
+
+async function installApk(variant) {
+	const apkPath = `android/app/build/outputs/apk/${variant}/app-${variant}.apk`;
+	await fs.access(apkPath);
+	await execCommand(`adb install -r "${apkPath}"`);
+}
 
 function execCommand(command) {
 	return new Promise((resolve, reject) => {

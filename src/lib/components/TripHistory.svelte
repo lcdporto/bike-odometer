@@ -2,6 +2,7 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { ChevronRight, MapPin, Clock } from '@lucide/svelte';
 	import type { Trip } from '$lib/stores/trips.svelte';
+	import { formatDistanceKm } from '$lib/utils';
 	
 	interface Props {
 		trips: Trip[];
@@ -28,7 +29,7 @@
 				<div class="flex items-center gap-4 text-xs text-muted-foreground">
 					<div class="flex items-center gap-1">
 						<MapPin class="h-3.5 w-3.5" />
-						<span class="font-mono font-medium">{trip.distance.toFixed(2)} km</span>
+						<span class="font-mono font-medium">{formatDistanceKm(trip.distance)} km</span>
 					</div>
 					<div class="flex items-center gap-1">
 						<Clock class="h-3.5 w-3.5" />

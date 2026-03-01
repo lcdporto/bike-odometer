@@ -1,6 +1,7 @@
 import { CapacitorSQLite, SQLiteConnection, type SQLiteDBConnection } from '@capacitor-community/sqlite';
 import type { Sensor } from '$lib/stores/sensor.svelte';
 import type { Trip } from '$lib/stores/trips.svelte';
+import { formatTime24h, getWheelCircumference, calculateDistance } from '$lib/utils';
 
 const DB_NAME = 'cycleSensor';
 let sqlite: SQLiteConnection | undefined = undefined;
@@ -164,16 +165,15 @@ async function loadTripsForSensor(sensorId: string): Promise<Trip[]> {
 			[row.id]
 		);
 		const formattedBuckets = buckets.map((b) => ({
-			time: new Date(b.timestamp).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }),
+			time: formatTime24h(new Date(b.timestamp)),
 			rotations: b.rotations,
 			timestamp: b.timestamp
 		}));
 
 		// Recalculate distance using correct wheel circumference formula
 		// wheel_size is diameter in inches, convert to circumference in meters
-		const wheelDiameterInches = Number.parseFloat(row.wheel_size);
-		const wheelCircumferenceMeters = wheelDiameterInches * Math.PI * 0.0254;
-		const correctedDistance = (row.total_rotations * wheelCircumferenceMeters) / 1000; // km
+		const wheelCircumferenceMeters = getWheelCircumference(row.wheel_size);
+		const correctedDistance = calculateDistance(row.total_rotations, wheelCircumferenceMeters);
 		const correctedAvgSpeed = row.duration > 0 ? (correctedDistance / row.duration) * 60 : 0;
 
 		trips.push({
@@ -183,12 +183,8 @@ async function loadTripsForSensor(sensorId: string): Promise<Trip[]> {
 				month: 'short',
 				day: 'numeric'
 			}),
-			startTime: new Date(row.start_date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }),
-			endTime: new Date(row.start_date + row.duration * 60 * 1000).toLocaleTimeString('en-GB', {
-				hour: '2-digit',
-				minute: '2-digit',
-				hour12: false
-			}),
+			startTime: formatTime24h(new Date(row.start_date)),
+			endTime: formatTime24h(new Date(row.start_date + row.duration * 60 * 1000)),
 			distance: correctedDistance,
 			duration: row.duration,
 			avgSpeed: correctedAvgSpeed,
@@ -196,7 +192,6 @@ async function loadTripsForSensor(sensorId: string): Promise<Trip[]> {
 			buckets: formattedBuckets
 		});
 	}
-
 	return trips;
 }
 

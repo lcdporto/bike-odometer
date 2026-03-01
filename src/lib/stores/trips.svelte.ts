@@ -12,17 +12,24 @@ export interface Trip {
 	buckets: RotationBucket[];
 }
 
-export const tripsState: Trip[] = $state([]);
+class TripsStore {
+	trips = $state<Trip[]>([]);
 
-export function setTrips(trips: Trip[]) {
-	tripsState.length = 0;
-	tripsState.push(...trips);
+	// Derived values
+	count = $derived(this.trips.length);
+
+	// Actions
+	setTrips(trips: Trip[]) {
+		this.trips = trips;
+	}
+
+	addTrip(trip: Trip) {
+		this.trips = [trip, ...this.trips];
+	}
+
+	getTripById(id: string): Trip | undefined {
+		return this.trips.find((t) => t.id === id);
+	}
 }
 
-export function addTrip(trip: Trip) {
-	tripsState.unshift(trip);
-}
-
-export function getTripById(id: string): Trip | undefined {
-	return tripsState.find((t) => t.id === id);
-}
+export const tripsState = new TripsStore();
