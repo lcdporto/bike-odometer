@@ -4,6 +4,7 @@ import { isPlaceholderDeviceName } from '$lib/utils';
 // UUID constants from ESP32 firmware
 const SERVICE_UUID = '6a4e3200-9b5f-4c6a-9b7a-01c9b0a00001';
 const CHARACTERISTIC_UUID = '6a4e3201-9b5f-4c6a-9b7a-01c9b0a00001';
+const DETECTION_TIMESTAMP_FIELD_UUID = '1234568b-1234-5678-1234-567812345678';
 
 export interface ScannedSensor {
 	macAddress: string;
@@ -62,16 +63,23 @@ export async function scanForESP32Sensors(scanDurationMs: number = 5000): Promis
 						strength: rssi,
 						device: result.device
 					});
+
+					writeDetectionTimestamp(deviceId);
 				}
 			}
 		);
 
-		// Wait for scan duration
-		console.log(`[BLE] Scanning for ${scanDurationMs}ms...`);
-		await new Promise((resolve) => setTimeout(resolve, scanDurationMs));
+		try {
+			console.log(`[BLE] Scanning for ${scanDurationMs}ms...`);
+			await new Promise((resolve) => setTimeout(resolve, scanDurationMs));
+		} finally {
+			try {
+				await BleClient.stopLEScan();
+			} catch (stopError) {
+				console.error('[BLE] Failed to stop LE scan:', stopError);
+			}
+		}
 
-		// Stop scanning
-		await BleClient.stopLEScan();
 		console.log(`[BLE] Scan complete. Found ${discoveredSensors.length} ESP32 sensors`);
 	} catch (error) {
 		console.error('[BLE] Scan error:', error);
@@ -79,6 +87,45 @@ export async function scanForESP32Sensors(scanDurationMs: number = 5000): Promis
 	}
 
 	return discoveredSensors;
+}
+
+async function writeDetectionTimestamp(deviceId: string): Promise<void> {
+	const unixTimestampSeconds = Math.floor(Date.now() / 1000);
+	const payload = new ArrayBuffer(4);
+	const view = new DataView(payload);
+	view.setUint32(0, unixTimestampSeconds, true);
+
+	try {
+		await BleClient.connect(deviceId, () => {
+			console.log(`Device ${deviceId} disconnected`);
+		});
+
+		const services = await BleClient.getServices(deviceId);
+		const discoveredCharacteristics: string[] = [];
+
+		for (const service of services) {
+			for (const characteristic of service.characteristics ?? []) {
+				discoveredCharacteristics.push(`${service.uuid} -> ${characteristic.uuid}`);
+			}
+		}
+
+		if (discoveredCharacteristics.length > 0) {
+			console.log(`[BLE] Discovered characteristics for ${deviceId}:`, discoveredCharacteristics);
+		} else {
+			console.log(`[BLE] No characteristics discovered for ${deviceId}`);
+		}
+
+		await BleClient.write(deviceId, SERVICE_UUID, DETECTION_TIMESTAMP_FIELD_UUID, view);
+		console.log(`[BLE] Wrote detection timestamp ${unixTimestampSeconds} to ${deviceId}`);
+	} catch (error) {
+		console.error(`[BLE] Failed to write detection timestamp to ${deviceId}:`, error);
+	} finally {
+		try {
+			await BleClient.disconnect(deviceId);
+		} catch {
+			// Ignore disconnect errors
+		}
+	}
 }
 
 /**
