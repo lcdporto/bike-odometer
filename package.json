@@ -3,12 +3,19 @@
 	"private": true,
 	"version": "0.0.1",
 	"type": "module",
+	"workspaces": [
+		"apps/*"
+	],
 	"scripts": {
 		"dev": "vite dev",
+		"dev:backend": "bun --cwd=apps/backend run dev",
+		"dev:all": "bun run dev:backend & bun run dev",
 		"build": "vite build",
+		"build:backend": "bun --cwd=apps/backend run build",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"check:backend": "bun --cwd=apps/backend run check",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"lint": "eslint .",
 		"build-app": "node scripts/build.js",

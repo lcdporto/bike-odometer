@@ -1,5 +1,6 @@
 import { initializeBLE, scanForESP32Sensors, readSensorDescriptor } from './ble';
 import { saveSensorDescriptor } from '$lib/persistence/sqlite';
+import { syncSensorSnapshot } from '$lib/services/sync';
 import type { Sensor } from '$lib/stores/sensor.svelte';
 import type { BleDevice } from '@capacitor-community/bluetooth-le';
 import { bleDevicesState } from '$lib/stores/ble-devices.svelte';
@@ -106,6 +107,11 @@ async function processSensor(deviceId: string, deviceName: string, strength: num
 		// Save to database
 		await saveSensorDescriptor(sensor, wheelSize, trips);
 		console.log(`Sensor ${deviceName} data saved to DB`);
+
+		// Sync latest snapshot to backend
+		syncSensorSnapshot(sensor.id).catch((error) => {
+			console.error(`Failed to sync sensor ${deviceName}:`, error);
+		});
 		
 		// Mark as discovered so we don't process it again
 		discoveredDevices.add(deviceId);
