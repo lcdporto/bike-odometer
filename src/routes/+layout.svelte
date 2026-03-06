@@ -4,6 +4,7 @@
 	import { ModeWatcher } from "mode-watcher";
 	import { onMount } from 'svelte';
 	import { startBackgroundScanning, stopBackgroundScanning } from '$lib/services/ble-background';
+	import { Toaster } from "$lib/components/ui/sonner/index.js";
 	
 	let { children } = $props();
 	
@@ -27,6 +28,7 @@
 	<meta name="theme-color" content="#1a1a2e" />
 </svelte:head>
 
+<Toaster/>
 <ModeWatcher />
 <div class="h-screen max-h-screen">
 	{@render children()}

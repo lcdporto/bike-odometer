@@ -1,10 +1,11 @@
 import { BleClient, type BleDevice, type ScanResult } from '@capacitor-community/bluetooth-le';
 import { isPlaceholderDeviceName } from '$lib/utils';
+import { toast } from "svelte-sonner";
 
 // UUID constants from ESP32 firmware
-const SERVICE_UUID = '6a4e3200-9b5f-4c6a-9b7a-01c9b0a00001';
-const CHARACTERISTIC_UUID = '6a4e3201-9b5f-4c6a-9b7a-01c9b0a00001';
-const DETECTION_TIMESTAMP_FIELD_UUID = '1234568b-1234-5678-1234-567812345678';
+const SERVICE_UUID = '78563412-7856-3412-5678-123412345678';
+const CHARACTERISTIC_UUID = '78563412-7856-3412-5678-123412345688';
+const DETECTION_TIMESTAMP_FIELD_UUID = '78563412-7856-3412-5678-12341234568b';
 
 export interface ScannedSensor {
 	macAddress: string;
@@ -54,7 +55,7 @@ export async function scanForESP32Sensors(scanDurationMs: number = 5000): Promis
 				const deviceName = isPlaceholderDeviceName(rawName) ? '(unnamed)' : rawName!;
 				const rssi = result.rssi ?? -100;
 
-				console.log(`[BLE] Device found: "${deviceName}" | ID: ${deviceId} | RSSI: ${rssi}dBm | Services: ${result.uuids?.join(', ') || 'none'}`);
+				console.log(`[BLE] Device found: "${deviceName}" | ID: ${deviceId} | RSSI: ${rssi}dBm | Services: ${result.uuids?.join(', ') || 'none'} servicedata: ${JSON.stringify(result.serviceData)}`);
 
 				if (!discoveredSensors.some((s) => s.macAddress === deviceId)) {
 					discoveredSensors.push({
@@ -91,9 +92,8 @@ export async function scanForESP32Sensors(scanDurationMs: number = 5000): Promis
 
 async function writeDetectionTimestamp(deviceId: string): Promise<void> {
 	const unixTimestampSeconds = Math.floor(Date.now() / 1000);
-	const payload = new ArrayBuffer(4);
-	const view = new DataView(payload);
-	view.setUint32(0, unixTimestampSeconds, true);
+	const payload = new TextEncoder().encode(String(unixTimestampSeconds));
+	const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
 
 	try {
 		await BleClient.connect(deviceId, () => {
@@ -116,9 +116,12 @@ async function writeDetectionTimestamp(deviceId: string): Promise<void> {
 		}
 
 		await BleClient.write(deviceId, SERVICE_UUID, DETECTION_TIMESTAMP_FIELD_UUID, view);
+		toast(`Wrote detection timestamp to ${deviceId}`);
+
 		console.log(`[BLE] Wrote detection timestamp ${unixTimestampSeconds} to ${deviceId}`);
 	} catch (error) {
 		console.error(`[BLE] Failed to write detection timestamp to ${deviceId}:`, error);
+		toast(`Failed to write detection timestamp to ${deviceId}`);
 	} finally {
 		try {
 			await BleClient.disconnect(deviceId);
