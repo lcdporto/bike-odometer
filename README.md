@@ -76,6 +76,18 @@ Signed APK is generated under:
 
 - `android/app/build/outputs/apk/release/`
 
+### Local debug install (bundled assets)
+
+Build and install a debug APK that uses bundled web assets (no live dev server required):
+
+```sh
+npm run install-app-debug-local
+```
+
+Debug APK path:
+
+- `android/app/build/outputs/apk/debug/app-debug.apk`
+
 ### GitHub Actions secrets
 
 The workflow in `.github/workflows/build-mobile.yml` expects:

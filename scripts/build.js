@@ -3,6 +3,7 @@ import { promises as fs } from 'fs';
 import os from 'os';
 
 const dev = process.argv.includes('--dev');
+const debugLocal = process.argv.includes('--debug-local');
 const install = process.argv.includes('--install');
 const signingEnvPath = './.keys/android-signing.env';
 
@@ -11,12 +12,14 @@ const signingEnvPath = './.keys/android-signing.env';
 		if (dev) {
 			await syncNetworkConfig();
 			await updateAppId(true);
+		} else if (debugLocal) {
+			await execCommand('vite build && npx cap sync');
 		} else {
 			await ensureAndroidSigningEnv();
 			await execCommand('vite build && npx cap sync');
 		}
-		const variant = dev ? 'debug' : 'release';
-		const variantCap = dev ? 'Debug' : 'Release';
+		const variant = (dev || debugLocal) ? 'debug' : 'release';
+		const variantCap = (dev || debugLocal) ? 'Debug' : 'Release';
 		await execCommand(`cd android && ${os.platform() === 'win32' ? 'gradlew' : './gradlew'} assemble${variantCap}`);
 		if (install) {
 			await installApk(variant);

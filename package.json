@@ -20,6 +20,7 @@
 		"lint": "eslint .",
 		"build-app": "node scripts/build.js",
 		"build-app-dev": "node scripts/build.js --dev",
+		"install-app-debug-local": "node scripts/build.js --debug-local --install",
 		"install-app": "node scripts/build.js --install",
 		"install-app-dev": "node scripts/build.js --dev --install && vite dev --host"
 	},
