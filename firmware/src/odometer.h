@@ -20,10 +20,12 @@
 #include <stddef.h>
 #include <stdbool.h>
 
-/* Wheel circumference in millimeters (default 2100mm = 2.1m). */
-#ifndef WHEEL_CIRCUMFERENCE_MM
-#define WHEEL_CIRCUMFERENCE_MM 2100U
-#endif
+/* Default wheel size: 26" = 2600 hundredths of an inch */
+#define DEFAULT_WHEEL_SIZE_X100  2600U
+
+/* Calculate wheel circumference in mm from size_x100 (C = pi * D) */
+#define WHEEL_CIRCUMFERENCE_MM(size_x100) \
+	((uint32_t)((((uint64_t)(size_x100) * 79796ULL) + 50000ULL) / 100000ULL))
 
 /* Storage configuration - 5-min bins, 4h max sessions */
 #define BIN_INTERVAL_MINUTES  5     /* 5-min bins (client requirement) */
@@ -103,5 +105,16 @@ size_t odometer_get_daily_total_count(void);
  * @brief Load odometer data from NVM
  */
 void odometer_load_from_nvm(void);
+
+/**
+ * @brief Get wheel size in inches * 100 (e.g., 2630 = 26.30")
+ */
+uint32_t odometer_get_wheel_size_x100(void);
+
+/**
+ * @brief Set wheel size in inches * 100 and persist to NVM
+ * @param size_x100 Wheel diameter in hundredths of inches
+ */
+void odometer_set_wheel_size_x100(uint32_t size_x100);
 
 #endif /* ODOMETER_H */

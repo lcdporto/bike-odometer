@@ -75,6 +75,9 @@ static uint32_t current_day_pulses;
 /* All-time counter */
 static uint64_t all_time_pulses;
 
+/* Wheel size (hundredths of inches, e.g., 2600 = 26.00") */
+static uint32_t wheel_size_x100 = DEFAULT_WHEEL_SIZE_X100;
+
 /* Pending bin data */
 static uint32_t pending_pulses;
 static bool pending_save;
@@ -232,7 +235,7 @@ static void store_bin(uint32_t pulses)
 	current_trip.bucket_count++;
 
 #ifdef DEBUG
-	uint32_t distance = pulses * WHEEL_CIRCUMFERENCE_MM;
+	uint32_t distance = pulses * WHEEL_CIRCUMFERENCE_MM(wheel_size_x100);
 	printk("Bucket stored: bucket=%u pulses=%u distance_m=%.3f\n",
 	       current_trip.bucket_count, pulses, distance / 1000.0);
 #endif
@@ -331,6 +334,13 @@ static void save_metadata_to_nvs(void)
 static void save_current_trip_to_nvs(bool completed)
 {
 	if (!nvs_ready) return;
+
+	/* Don't save trips with invalid timestamps (before year 2000) */
+	const uint64_t year_2000_ms = 946684800000ULL;
+	if (current_trip.start_timestamp_ms < year_2000_ms) {
+		printk("NVS: Skipping trip save - invalid timestamp\n");
+		return;
+	}
 
 	if (completed) {
 		/* Trip completed - save to next slot and increment count */
@@ -445,7 +455,7 @@ uint64_t odometer_get_total_pulses(void)
 
 uint32_t odometer_get_total_distance_m(void)
 {
-	return (uint32_t)((all_time_pulses * WHEEL_CIRCUMFERENCE_MM) / 1000);
+	return (uint32_t)((all_time_pulses * WHEEL_CIRCUMFERENCE_MM(wheel_size_x100)) / 1000);
 }
 
 size_t odometer_get_trip_count(void)
@@ -519,6 +529,14 @@ void odometer_load_from_nvm(void)
 	nvs_read(&nvs, NVS_ID_CURRENT_DAY, &current_day_number, sizeof(current_day_number));
 	nvs_read(&nvs, NVS_ID_CURRENT_PULSE, &current_day_pulses, sizeof(current_day_pulses));
 
+	/* Load wheel size (use default if not stored) */
+	uint32_t stored_wheel_size;
+	if (nvs_read(&nvs, NVS_ID_WHEEL_SIZE, &stored_wheel_size, sizeof(stored_wheel_size)) > 0) {
+		if (stored_wheel_size >= 1000 && stored_wheel_size <= 4000) {
+			wheel_size_x100 = stored_wheel_size;
+		}
+	}
+
 	/* Clamp values */
 	if (nvm_trip_count > MAX_TRIPS) nvm_trip_count = MAX_TRIPS;
 	if (daily_total_count > MAX_DAILY_TOTALS) daily_total_count = MAX_DAILY_TOTALS;
@@ -545,4 +563,21 @@ void odometer_load_from_nvm(void)
 	       (unsigned long long)all_time_pulses, odometer_get_total_distance_m());
 	printk("  Trips in NVS: %zu (active=%d)\n", nvm_trip_count, in_active_trip);
 	printk("  Daily totals: %zu entries\n", daily_total_count);
+	printk("  Wheel size: %u.%02u\"\n", wheel_size_x100 / 100, wheel_size_x100 % 100);
+}
+
+uint32_t odometer_get_wheel_size_x100(void)
+{
+	return wheel_size_x100;
+}
+
+void odometer_set_wheel_size_x100(uint32_t size_x100)
+{
+	if (size_x100 < 1000 || size_x100 > 4000) {
+		return; /* Sanity check: 10" - 40" range */
+	}
+	wheel_size_x100 = size_x100;
+	if (nvs_ready) {
+		nvs_write(&nvs, NVS_ID_WHEEL_SIZE, &wheel_size_x100, sizeof(wheel_size_x100));
+	}
 }
