@@ -48,6 +48,7 @@ static const struct gpio_dt_spec pulse_gpio = GPIO_DT_SPEC_GET(PULSE_NODE, gpios
 #define NVS_ID_DAILY_DATA    5
 #define NVS_ID_CURRENT_DAY   6
 #define NVS_ID_CURRENT_PULSE 7
+#define NVS_ID_WHEEL_SIZE    8
 #define NVS_ID_TRIP_BASE     1000  /* Trip IDs: 1000, 1001, 1002, ... */
 
 static struct nvs_fs nvs;
