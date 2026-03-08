@@ -6,6 +6,7 @@ import { toast } from "svelte-sonner";
 const SERVICE_UUID = '78563412-7856-3412-5678-123412345678';
 const CHARACTERISTIC_UUID = '78563412-7856-3412-5678-123412345688';
 const DETECTION_TIMESTAMP_FIELD_UUID = '78563412-7856-3412-5678-12341234568b';
+const WHEEL_SIZE_DESCRIPTOR_UUID = '1234568d-1234-5678-1234-567812345678';
 
 export interface ScannedSensor {
 	macAddress: string;
@@ -131,6 +132,85 @@ async function writeDetectionTimestamp(deviceId: string): Promise<void> {
 	}
 }
 
+function decodeCharacteristicString(dataView: DataView): string {
+	const decoder = new TextDecoder('utf-8');
+	return decoder.decode(dataView).replace(/\0+$/g, '').trim();
+}
+
+function encodeCharacteristicString(value: string): DataView {
+	const payload = new TextEncoder().encode(value);
+	return new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+}
+
+async function readStringCharacteristic(deviceId: string, characteristicUuid: string, label: string): Promise<string> {
+	try {
+		await BleClient.connect(deviceId, () => {
+			console.log(`Device ${deviceId} disconnected`);
+		});
+
+		const dataView = await BleClient.read(deviceId, SERVICE_UUID, characteristicUuid);
+		const value = decodeCharacteristicString(dataView);
+		console.log(`[BLE] Read ${label}:`, value);
+		return value;
+	} catch (error) {
+		console.error(`[BLE] Failed to read ${label}:`, error);
+		throw error;
+	} finally {
+		try {
+			await BleClient.disconnect(deviceId);
+		} catch {
+			// Ignore disconnect errors
+		}
+	}
+}
+
+async function writeStringCharacteristic(
+	deviceId: string,
+	characteristicUuid: string,
+	value: string,
+	label: string
+): Promise<void> {
+	try {
+		await BleClient.connect(deviceId, () => {
+			console.log(`Device ${deviceId} disconnected`);
+		});
+
+		await BleClient.write(
+			deviceId,
+			SERVICE_UUID,
+			characteristicUuid,
+			encodeCharacteristicString(value)
+		);
+		console.log(`[BLE] Wrote ${label}:`, value);
+	} catch (error) {
+		console.error(`[BLE] Failed to write ${label}:`, error);
+		throw error;
+	} finally {
+		try {
+			await BleClient.disconnect(deviceId);
+		} catch {
+			// Ignore disconnect errors
+		}
+	}
+}
+
+export async function readWheelSizeDescriptor(deviceId: string): Promise<string> {
+	const wheelSize = await readStringCharacteristic(deviceId, WHEEL_SIZE_DESCRIPTOR_UUID, 'wheel size descriptor');
+	if (!wheelSize) {
+		throw new Error(`Wheel size descriptor is empty for device ${deviceId}`);
+	}
+	return wheelSize;
+}
+
+export async function writeWheelSizeDescriptor(deviceId: string, wheelSizeInches: string): Promise<void> {
+	await writeStringCharacteristic(
+		deviceId,
+		WHEEL_SIZE_DESCRIPTOR_UUID,
+		wheelSizeInches.trim(),
+		'wheel size descriptor'
+	);
+}
+
 /**
  * Connect to a BLE device and read the sensor descriptor JSON from the characteristic
  * @param device The BLE device to connect to
@@ -147,12 +227,11 @@ export async function readSensorDescriptor<T = unknown>(device: BleDevice): Prom
 		const dataView = await BleClient.read(device.deviceId, SERVICE_UUID, CHARACTERISTIC_UUID);
 
 		// Convert DataView to string
-		const decoder = new TextDecoder('utf-8');
-		const jsonString = decoder.decode(dataView);
+		const jsonString = decodeCharacteristicString(dataView);
 		console.log('Read sensor descriptor JSON:', jsonString);
 
-		// Remove null bytes and any trailing garbage
-		let cleanedString = jsonString.replace(/\0+$/, '').trim();
+		// Remove any trailing garbage
+		let cleanedString = jsonString;
 
 		// Try to find the last valid closing brace for the JSON object
 		// This handles cases where there's garbage after the valid JSON

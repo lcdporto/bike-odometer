@@ -195,9 +195,7 @@ async function loadTripsForSensor(sensorId: string): Promise<Trip[]> {
 	return trips;
 }
 
-export async function saveSensorDescriptor(sensor: Sensor, wheelSize: string, trips: Trip[]) {
-	const now = Date.now();
-
+async function resolvePersistedSensorName(sensor: Sensor): Promise<string> {
 	let sensorName = sensor.name;
 	if (isPlaceholderDeviceName(sensorName)) {
 		const existing = await query<{ name: string }>(
@@ -210,11 +208,21 @@ export async function saveSensorDescriptor(sensor: Sensor, wheelSize: string, tr
 		}
 	}
 
+	return sensorName;
+}
+
+async function upsertSensor(sensor: Sensor, wheelSize: string, lastSeen: number) {
+	const sensorName = await resolvePersistedSensorName(sensor);
 	await run(
 		`INSERT OR REPLACE INTO sensors (id, name, strength, wheel_size, last_seen)
 		 VALUES (?, ?, ?, ?, ?);`,
-		[sensor.id, sensorName, sensor.signalStrength, wheelSize, now]
+		[sensor.id, sensorName, sensor.signalStrength, wheelSize, lastSeen]
 	);
+}
+
+export async function saveSensorDescriptor(sensor: Sensor, wheelSize: string, trips: Trip[]) {
+	const now = Date.now();
+	await upsertSensor(sensor, wheelSize, now);
 
 	for (const trip of trips) {
 		const startTimestamp = trip.buckets[0]?.timestamp ?? now;
@@ -242,6 +250,10 @@ export async function saveSensorDescriptor(sensor: Sensor, wheelSize: string, tr
 			);
 		}
 	}
+}
+
+export async function saveSensorWheelSize(sensor: Sensor, wheelSize: string) {
+	await upsertSensor(sensor, wheelSize, Date.now());
 }
 
 export async function loadLatestSensorWithTrips(): Promise<{ sensor: Sensor; wheelSize: string; trips: Trip[] } | null> {

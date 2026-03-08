@@ -1,7 +1,10 @@
 <script lang="ts">
 	import { Select, SelectContent, SelectItem, SelectTrigger } from '$lib/components/ui/select';
 	import { WHEEL_SIZES } from '$lib/config/wheels';
+	import { saveSensorWheelSize } from '$lib/persistence/sqlite';
+	import { writeWheelSizeDescriptor } from '$lib/services/ble';
 	import { initializeAppDataFromSensors } from '$lib/state/app-state';
+	import { bleDevicesState } from '$lib/stores/ble-devices.svelte';
 	import { sensorState } from '$lib/stores/sensor.svelte';
 	import type { Trip } from '$lib/stores/trips.svelte';
 	import { tripsState } from '$lib/stores/trips.svelte';
@@ -19,6 +22,10 @@
 	let selectedTrip = $state<Trip | null>(null);
 	
 	let wheelCircumference = $derived(getWheelCircumference(sensorState.wheelSize));
+	let liveConnectedDeviceIds = $derived(new Set(bleDevicesState.connectedDevices.map((device) => device.id)));
+	let isLiveSensorSelected = $derived(
+		sensorState.connectedSensor ? liveConnectedDeviceIds.has(sensorState.connectedSensor.id) : false
+	);
 	
 	// Calculate totals from ALL trips, not just rotation buckets
 	let allBuckets = $derived.by(() => {
@@ -82,8 +89,24 @@
 		view = 'pairing';
 	}
 	
-	function handleWheelSizeChange(newSize: string) {
-		sensorState.setWheelSize(newSize);
+	async function handleWheelSizeChange(newSize: string) {
+		if (!newSize || newSize === sensorState.wheelSize) {
+			return;
+		}
+
+		const activeSensor = sensorState.connectedSensor;
+		if (!activeSensor) {
+			sensorState.setWheelSize(newSize);
+			return;
+		}
+
+		try {
+			await writeWheelSizeDescriptor(activeSensor.id, newSize);
+			sensorState.setWheelSize(newSize);
+			await saveSensorWheelSize(activeSensor, newSize);
+		} catch (error) {
+			console.error('Failed to update wheel size descriptor:', error);
+		}
 	}
 </script>
 
@@ -101,9 +124,13 @@
 					<h1 class="text-base font-bold tracking-tight text-foreground">Bike Counter</h1>
 					<button
 						onclick={handleDisconnect}
-						class="flex items-center gap-1.5 text-xs text-primary hover:underline"
+						class="flex items-center gap-1.5 text-xs hover:underline {isLiveSensorSelected ? 'text-primary' : 'text-muted-foreground'}"
 					>
-						<Bluetooth class="h-3 w-3" />
+						{#if isLiveSensorSelected}
+							<Bluetooth class="h-3 w-3" />
+						{:else}
+							<History class="h-3 w-3" />
+						{/if}
 						{sensorState.connectedSensor?.name || 'Unknown'}
 					</button>
 				</div>

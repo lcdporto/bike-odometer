@@ -3,7 +3,10 @@
 	import { Select, SelectContent, SelectItem, SelectTrigger } from '$lib/components/ui/select';
 	import { resolve } from '$app/paths';
 	import { sensorState } from '$lib/stores/sensor.svelte';
+	import { bleDevicesState } from '$lib/stores/ble-devices.svelte';
 	import type { Sensor } from '$lib/stores/sensor.svelte';
+	import { writeWheelSizeDescriptor } from '$lib/services/ble';
+	import { saveSensorWheelSize } from '$lib/persistence/sqlite';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { WHEEL_SIZES, DEFAULT_WHEEL_SIZE } from '$lib/config/wheels';
@@ -11,6 +14,10 @@
 
 	let connectedSensor = $state<Sensor | null>(null);
 	let wheelSize = $state(DEFAULT_WHEEL_SIZE);
+	let liveConnectedDeviceIds = $derived(new Set(bleDevicesState.connectedDevices.map((device) => device.id)));
+	let isLiveSensorSelected = $derived(
+		connectedSensor ? liveConnectedDeviceIds.has(connectedSensor.id) : false
+	);
 
 	let currentPath = $derived(page.url.pathname);
 	let isCurrentActive = $derived(currentPath === '/current');
@@ -21,11 +28,28 @@
 		wheelSize = sensorState.wheelSize;
 	});
 
-	$effect(() => {
-		if (wheelSize) {
-			sensorState.setWheelSize(wheelSize);
+	async function handleWheelSizeChange(nextWheelSize: string) {
+		if (!nextWheelSize || nextWheelSize === sensorState.wheelSize) {
+			return;
 		}
-	});
+
+		const activeSensor = sensorState.connectedSensor;
+		if (!activeSensor) {
+			wheelSize = nextWheelSize;
+			sensorState.setWheelSize(nextWheelSize);
+			return;
+		}
+
+		try {
+			await writeWheelSizeDescriptor(activeSensor.id, nextWheelSize);
+			sensorState.setWheelSize(nextWheelSize);
+			wheelSize = nextWheelSize;
+			await saveSensorWheelSize(activeSensor, nextWheelSize);
+		} catch (error) {
+			console.error('Failed to update wheel size descriptor:', error);
+			wheelSize = sensorState.wheelSize;
+		}
+	}
 
 	function handleDisconnect() {
 		sensorState.disconnectSensor();
@@ -49,15 +73,19 @@
 				<h1 class="text-base font-bold tracking-tight text-foreground">Bike Counter</h1>
 				<button
 					onclick={handleDisconnect}
-					class="flex items-center gap-1.5 text-xs text-primary hover:underline"
+					class="flex items-center gap-1.5 text-xs hover:underline {isLiveSensorSelected ? 'text-primary' : 'text-muted-foreground'}"
 				>
-					<Bluetooth class="h-3 w-3" />
+					{#if isLiveSensorSelected}
+						<Bluetooth class="h-3 w-3" />
+					{:else}
+						<History class="h-3 w-3" />
+					{/if}
 					{connectedSensor ? resolveDisplaySensorName(connectedSensor.name, connectedSensor.id) : 'Unknown'}
 				</button>
 			</div>
 		</div>
 
-		<Select type="single" bind:value={wheelSize}>
+		<Select type="single" value={wheelSize} onValueChange={handleWheelSizeChange}>
 			<SelectTrigger class="w-[100px] bg-card text-sm">
 				{WHEEL_SIZES.find((s) => s.value === wheelSize)?.label || 'Wheel'}
 			</SelectTrigger>

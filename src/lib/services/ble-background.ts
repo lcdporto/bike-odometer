@@ -1,4 +1,4 @@
-import { initializeBLE, scanForESP32Sensors, readSensorDescriptor } from './ble';
+import { initializeBLE, scanForESP32Sensors, readSensorDescriptor, readWheelSizeDescriptor } from './ble';
 import { saveSensorDescriptor } from '$lib/persistence/sqlite';
 import { syncSensorSnapshot } from '$lib/services/sync';
 import type { Sensor } from '$lib/stores/sensor.svelte';
@@ -18,10 +18,6 @@ function rssiToPercentage(rssi: number): number {
 }
 
 type SensorDescriptor = {
-	/**
-	 * Wheel size in inches
-	 */
-	wheelSize: number;
 	trips: Array<{
 		/**
 		 * Trip ID
@@ -42,8 +38,8 @@ let isScanning = false;
 let scanInterval: number | null = null;
 const discoveredDevices = new Set<string>();
 
-function inchesToWheelSizeValue(inches: number): string {
-	return String(inches || 26);
+function normalizeWheelSizeValue(wheelSize: string): string {
+	return wheelSize.trim() || '26';
 }
 
 function toRotationBucket(trip: SensorDescriptor['trips'][0], idx: number) {
@@ -91,9 +87,10 @@ async function processSensor(deviceId: string, deviceName: string, strength: num
 		// Read sensor descriptor from BLE
 		const descriptor = await readSensorDescriptor<SensorDescriptor>(device);
 		console.log('Sensor descriptor received:', descriptor);
+		const wheelSize = normalizeWheelSizeValue(await readWheelSizeDescriptor(device.deviceId));
+		console.log('Wheel size descriptor received:', wheelSize);
 		
 		// Convert to app format
-		const wheelSize = inchesToWheelSizeValue(descriptor.wheelSize);
 		const wheelCircumference = getWheelCircumference(wheelSize);
 		
 		const sensor: Sensor = {
