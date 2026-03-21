@@ -1,6 +1,7 @@
 import { getSensorWithTrips } from '$lib/persistence/sqlite';
 import { sensorState } from '$lib/stores/sensor.svelte';
 import type { Trip } from '$lib/stores/trips.svelte';
+import { PUBLIC_BACKEND_API_URL } from '$env/static/public';
 import type {
 	SyncPushRequest,
 	SyncPushResponse,
@@ -8,32 +9,8 @@ import type {
 	SyncBucketRecord
 } from '$lib/types/sync';
 
-const DEFAULT_SYNC_API_BASE_URL = 'http://localhost:4173';
-const SYNC_API_PORT = '4173';
-
-function isLoopbackHost(host: string): boolean {
-	return host === 'localhost' || host === '127.0.0.1' || host === '::1';
-}
-
-function inferRuntimeSyncApiBaseUrl(): string | null {
-	if (typeof window === 'undefined') return null;
-	const runtimeHost = window.location.hostname;
-	if (!runtimeHost || isLoopbackHost(runtimeHost)) return null;
-	return `http://${runtimeHost}:${SYNC_API_PORT}`;
-}
-
 function getSyncApiBaseUrl(): string {
-	const configured = import.meta.env.PUBLIC_SYNC_API_BASE_URL;
-	if (typeof configured === 'string' && configured.length > 0) {
-		return configured;
-	}
-
-	const runtime = inferRuntimeSyncApiBaseUrl();
-	if (runtime) {
-		return runtime;
-	}
-
-	return DEFAULT_SYNC_API_BASE_URL;
+	return PUBLIC_BACKEND_API_URL;
 }
 
 function toSyncRecords(sensorId: string, wheelSize: string, syncedAt: number, trips: Trip[]) {
