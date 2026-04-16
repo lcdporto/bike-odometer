@@ -14,15 +14,22 @@
 #include <zephyr/bluetooth/conn.h>
 #include <zephyr/bluetooth/uuid.h>
 #include <zephyr/bluetooth/gatt.h>
+#include <zephyr/bluetooth/att.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <string.h>
 
 #define DEVICE_NAME             CONFIG_BT_DEVICE_NAME
 #define DEVICE_NAME_LEN         (sizeof(DEVICE_NAME) - 1)
+#define TRIPS_NOTIFY_STACK_SIZE 2048
 
 /* Advertising work */
 static struct k_work adv_work;
+static struct bt_conn *current_conn;
+static struct k_work_q trips_notify_work_q;
+static struct k_work trips_notify_work;
+K_THREAD_STACK_DEFINE(trips_notify_stack, TRIPS_NOTIFY_STACK_SIZE);
 
 /*
  * BLE read handler for pulse count
@@ -65,27 +72,6 @@ static ssize_t read_pulse(struct bt_conn *conn,
 }
 
 /*
- * BLE read handler for odometer (all-time total)
- */
-static ssize_t read_odometer(struct bt_conn *conn,
-						     const struct bt_gatt_attr *attr,
-						     void *buf, uint16_t len, uint16_t offset)
-{
-	uint64_t total_pulses = odometer_get_total_pulses();
-	uint32_t total_distance_m = odometer_get_total_distance_m();
-	size_t daily_count = odometer_get_daily_total_count();
-
-	char str[64];
-	int n = snprintf(str, sizeof(str), "{\"pulses\":%llu,\"meters\":%u,\"days\":%zu}",
-	                 (unsigned long long)total_pulses, total_distance_m, daily_count);
-	if (n < 0) {
-		return BT_GATT_ERR(BT_ATT_ERR_UNLIKELY);
-	}
-
-	return bt_gatt_attr_read(conn, attr, buf, len, offset, str, (size_t)n);
-}
-
-/*
  * BLE read handler for trips JSON
  */
 static ssize_t read_trips(struct bt_conn *conn,
@@ -95,7 +81,7 @@ static ssize_t read_trips(struct bt_conn *conn,
 	size_t trip_count = odometer_get_trip_count();
 	struct trip_entry trip;
 
-	static char out[4096];
+	static char out[BT_ATT_MAX_ATTRIBUTE_LEN];
 	size_t pos = 0;
 	int written = snprintf(out, sizeof(out), "{\"trips\":[");
 	if (written < 0 || (size_t)written >= sizeof(out)) {
@@ -106,15 +92,19 @@ static ssize_t read_trips(struct bt_conn *conn,
 	for (size_t t = 0; t < trip_count; t++) {
 		char trip_json[1024];
 		size_t tpos = 0;
+		uint32_t trip_id;
 
 		if (odometer_read_trip(t, &trip) != 0) {
 			continue;
 		}
 
+		trip_id = odometer_get_trip_id(t);
+
 		written = snprintf(trip_json + tpos, sizeof(trip_json) - tpos,
-					   "%s{\"startDate\":%llu,\"buckets\":[",
+					   "%s{\"id\":%u,\"startDateSec\":%llu,\"buckets\":[",
 					   (t > 0) ? "," : "",
-					   (unsigned long long)trip.start_timestamp_ms);
+					   trip_id,
+					   (unsigned long long)trip.start_timestamp_s);
 		if (written < 0 || (size_t)written >= (sizeof(trip_json) - tpos)) {
 			break;
 		}
@@ -136,7 +126,8 @@ static ssize_t read_trips(struct bt_conn *conn,
 		tpos += (size_t)written;
 
 		if (tpos >= (sizeof(out) - pos - 2)) {
-			printk("BLE trips payload truncated at trip %zu/%zu\n", t, trip_count);
+			printk("BLE trips payload truncated at trip %zu/%zu (%u-byte ATT limit)\n",
+			       t, trip_count, BT_ATT_MAX_ATTRIBUTE_LEN);
 			break;
 		}
 
@@ -170,60 +161,328 @@ static struct bt_uuid_128 bike_battery_uuid = BT_UUID_INIT_128(
 static struct bt_uuid_128 bike_time_uuid = BT_UUID_INIT_128(
 	0x8B,0x56,0x34,0x12,0x34,0x12,0x78,0x56,0x12,0x34,0x56,0x78,0x12,0x34,0x56,0x78);
 
-static struct bt_uuid_128 bike_odometer_uuid = BT_UUID_INIT_128(
-	0x8C,0x56,0x34,0x12,0x34,0x12,0x78,0x56,0x12,0x34,0x56,0x78,0x12,0x34,0x56,0x78);
-
 static struct bt_uuid_128 bike_wheelsize_uuid = BT_UUID_INIT_128(
 	0x8D,0x56,0x34,0x12,0x34,0x12,0x78,0x56,0x12,0x34,0x56,0x78,0x12,0x34,0x56,0x78);
 
-/* Characteristic Presentation Format: UTF-8 string */
-static const struct bt_gatt_cpf trips_cpf = {
-	.format = 0x19,
-	.exponent = 0,
-	.unit = 0x2700,
-	.name_space = 0x01,
-	.description = 0x0000,
+enum trips_stream_phase {
+	TRIPS_STREAM_START,
+	TRIPS_STREAM_TRIP_START,
+	TRIPS_STREAM_BUCKET,
+	TRIPS_STREAM_TRIP_END,
+	TRIPS_STREAM_END,
+	TRIPS_STREAM_DONE,
 };
 
-static const struct bt_gatt_cpf pulse_cpf = {
-	.format = 0x19,
-	.exponent = 0,
-	.unit = 0x2700,
-	.name_space = 0x01,
-	.description = 0x0000,
+struct trips_stream_state {
+	bool notify_enabled;
+	bool active;
+	bool notify_in_progress;
+	bool sent_any_trip;
+	enum trips_stream_phase phase;
+	size_t phase_offset;
+	size_t trip_count;
+	size_t trip_index;
+	uint32_t trip_id;
+	uint16_t bucket_index;
+	struct trip_entry trip;
+	struct bt_gatt_notify_params notify_params;
+	char notify_buf[CONFIG_BT_L2CAP_TX_MTU];
 };
 
-static const struct bt_gatt_cpf battery_cpf = {
-	.format = 0x19,  /* UTF-8 string (JSON) */
-	.exponent = 0,
-	.unit = 0x2700,
-	.name_space = 0x01,
-	.description = 0x0000,
-};
+static struct trips_stream_state trips_stream;
 
-static const struct bt_gatt_cpf time_cpf = {
-	.format = 0x08,  /* uint64 */
-	.exponent = 0,
-	.unit = 0x2703,  /* seconds */
-	.name_space = 0x01,
-	.description = 0x0000,
-};
+static void trips_notify_work_handler(struct k_work *work);
+static void trips_notify_complete(struct bt_conn *conn, void *user_data);
+static void trips_ccc_changed(const struct bt_gatt_attr *attr, uint16_t value);
+static ssize_t write_trips(struct bt_conn *conn,
+					   const struct bt_gatt_attr *attr,
+					   const void *buf, uint16_t len,
+					   uint16_t offset, uint8_t flags);
 
-static const struct bt_gatt_cpf odometer_cpf = {
-	.format = 0x19,  /* UTF-8 string (JSON) */
-	.exponent = 0,
-	.unit = 0x2700,
-	.name_space = 0x01,
-	.description = 0x0000,
-};
+static void trips_stream_reset(void)
+{
+	trips_stream.active = false;
+	trips_stream.sent_any_trip = false;
+	trips_stream.notify_in_progress = false;
+	trips_stream.phase = TRIPS_STREAM_DONE;
+	trips_stream.phase_offset = 0;
+	trips_stream.trip_count = 0;
+	trips_stream.trip_index = 0;
+	trips_stream.trip_id = 0;
+	trips_stream.bucket_index = 0;
+}
 
-static const struct bt_gatt_cpf wheelsize_cpf = {
-	.format = 0x19,  /* UTF-8 string */
-	.exponent = 0,
-	.unit = 0x2712,  /* inch */
-	.name_space = 0x01,
-	.description = 0x0000,
-};
+static size_t trips_stream_append(char *dst, size_t dst_len, size_t dst_pos,
+					  const char *src, size_t src_len,
+					  size_t *src_offset)
+{
+	size_t remaining = src_len - *src_offset;
+	size_t space = dst_len - dst_pos;
+	size_t copy_len = MIN(remaining, space);
+
+	if (copy_len == 0U) {
+		return 0U;
+	}
+
+	memcpy(dst + dst_pos, src + *src_offset, copy_len);
+	*src_offset += copy_len;
+
+	return copy_len;
+}
+
+static void trips_stream_advance_to_next_trip(void)
+{
+	while (trips_stream.trip_index < trips_stream.trip_count) {
+		if (odometer_read_trip(trips_stream.trip_index, &trips_stream.trip) == 0) {
+			trips_stream.trip_id = odometer_get_trip_id(trips_stream.trip_index);
+			trips_stream.phase = TRIPS_STREAM_TRIP_START;
+			trips_stream.phase_offset = 0;
+			trips_stream.bucket_index = 0;
+			trips_stream.trip_index++;
+			return;
+		}
+
+		printk("BLE: Failed to read trip %zu\n", trips_stream.trip_index);
+		trips_stream.trip_index++;
+	}
+
+	trips_stream.phase = TRIPS_STREAM_END;
+	trips_stream.phase_offset = 0;
+}
+
+static size_t trips_stream_build_chunk(char *chunk, size_t chunk_size)
+{
+	static const char stream_start[] = "{\"trips\":[";
+	static const char stream_end[] = "]}";
+	static const char trip_end[] = "]}";
+	size_t len = 0;
+
+	while (len < chunk_size && trips_stream.phase != TRIPS_STREAM_DONE) {
+		char part[112];
+		size_t part_len = 0;
+		size_t copied;
+		int written;
+
+		switch (trips_stream.phase) {
+		case TRIPS_STREAM_START:
+			copied = trips_stream_append(chunk, chunk_size, len,
+						    stream_start, sizeof(stream_start) - 1,
+						    &trips_stream.phase_offset);
+			len += copied;
+			if (trips_stream.phase_offset == sizeof(stream_start) - 1) {
+				trips_stream.phase_offset = 0;
+				trips_stream_advance_to_next_trip();
+			}
+			break;
+
+		case TRIPS_STREAM_TRIP_START:
+			written = snprintf(part, sizeof(part), "%s{\"id\":%u,\"startDateSec\":%llu,\"buckets\":[",
+					   trips_stream.sent_any_trip ? "," : "",
+					   trips_stream.trip_id,
+					   (unsigned long long)trips_stream.trip.start_timestamp_s);
+			if (written < 0 || (size_t)written >= sizeof(part)) {
+				printk("BLE: Failed to format trip header\n");
+				trips_stream_reset();
+				return 0;
+			}
+
+			part_len = (size_t)written;
+			copied = trips_stream_append(chunk, chunk_size, len,
+						    part, part_len,
+						    &trips_stream.phase_offset);
+			len += copied;
+			if (trips_stream.phase_offset == part_len) {
+				trips_stream.phase_offset = 0;
+				trips_stream.sent_any_trip = true;
+				trips_stream.phase = trips_stream.trip.bucket_count > 0 ?
+					TRIPS_STREAM_BUCKET : TRIPS_STREAM_TRIP_END;
+			}
+			break;
+
+		case TRIPS_STREAM_BUCKET:
+			written = snprintf(part, sizeof(part), "%s%u",
+					   trips_stream.bucket_index > 0 ? "," : "",
+					   trips_stream.trip.buckets[trips_stream.bucket_index]);
+			if (written < 0 || (size_t)written >= sizeof(part)) {
+				printk("BLE: Failed to format trip bucket\n");
+				trips_stream_reset();
+				return 0;
+			}
+
+			part_len = (size_t)written;
+			copied = trips_stream_append(chunk, chunk_size, len,
+						    part, part_len,
+						    &trips_stream.phase_offset);
+			len += copied;
+			if (trips_stream.phase_offset == part_len) {
+				trips_stream.phase_offset = 0;
+				trips_stream.bucket_index++;
+				if (trips_stream.bucket_index >= trips_stream.trip.bucket_count) {
+					trips_stream.phase = TRIPS_STREAM_TRIP_END;
+				}
+			}
+			break;
+
+		case TRIPS_STREAM_TRIP_END:
+			copied = trips_stream_append(chunk, chunk_size, len,
+						    trip_end, sizeof(trip_end) - 1,
+						    &trips_stream.phase_offset);
+			len += copied;
+			if (trips_stream.phase_offset == sizeof(trip_end) - 1) {
+				trips_stream.phase_offset = 0;
+				trips_stream_advance_to_next_trip();
+			}
+			break;
+
+		case TRIPS_STREAM_END:
+			copied = trips_stream_append(chunk, chunk_size, len,
+						    stream_end, sizeof(stream_end) - 1,
+						    &trips_stream.phase_offset);
+			len += copied;
+			if (trips_stream.phase_offset == sizeof(stream_end) - 1) {
+				trips_stream.phase_offset = 0;
+				trips_stream.phase = TRIPS_STREAM_DONE;
+				trips_stream.active = false;
+			}
+			break;
+
+		case TRIPS_STREAM_DONE:
+		default:
+			break;
+		}
+
+		if (copied == 0U) {
+			break;
+		}
+	}
+
+	return len;
+}
+
+static void trips_stream_start(void)
+{
+	trips_stream.active = true;
+	trips_stream.sent_any_trip = false;
+	trips_stream.phase = TRIPS_STREAM_START;
+	trips_stream.phase_offset = 0;
+	trips_stream.trip_count = odometer_get_trip_count();
+	trips_stream.trip_index = 0;
+	trips_stream.trip_id = 0;
+	trips_stream.bucket_index = 0;
+
+	printk("BLE: Starting trips notification stream (%zu trips)\n", trips_stream.trip_count);
+	k_work_submit_to_queue(&trips_notify_work_q, &trips_notify_work);
+}
+
+static void trips_notify_complete(struct bt_conn *conn, void *user_data)
+{
+	ARG_UNUSED(conn);
+	ARG_UNUSED(user_data);
+
+	trips_stream.notify_in_progress = false;
+	if (trips_stream.active) {
+		k_work_submit_to_queue(&trips_notify_work_q, &trips_notify_work);
+	} else {
+		printk("BLE: Trips notification stream complete\n");
+	}
+}
+
+static void trips_notify_work_handler(struct k_work *work)
+{
+	struct bt_conn *conn = current_conn;
+	size_t mtu_payload;
+	size_t chunk_len;
+	int err;
+
+	ARG_UNUSED(work);
+
+	if (!trips_stream.active || trips_stream.notify_in_progress || !trips_stream.notify_enabled || conn == NULL) {
+		return;
+	}
+
+	mtu_payload = bt_gatt_get_mtu(conn);
+	if (mtu_payload > 3U) {
+		mtu_payload -= 3U;
+	}
+	mtu_payload = MIN(mtu_payload, sizeof(trips_stream.notify_buf));
+
+	chunk_len = trips_stream_build_chunk(trips_stream.notify_buf, mtu_payload);
+	if (chunk_len == 0U) {
+		return;
+	}
+
+	trips_stream.notify_params.uuid = &bike_trips_uuid.uuid;
+	trips_stream.notify_params.attr = NULL;
+	trips_stream.notify_params.data = trips_stream.notify_buf;
+	trips_stream.notify_params.len = (uint16_t)chunk_len;
+	trips_stream.notify_params.func = trips_notify_complete;
+	trips_stream.notify_params.user_data = NULL;
+	trips_stream.notify_in_progress = true;
+
+	err = bt_gatt_notify_cb(conn, &trips_stream.notify_params);
+	if (err) {
+		trips_stream.notify_in_progress = false;
+		trips_stream_reset();
+		printk("BLE: Trips notification failed (err %d)\n", err);
+	}
+}
+
+static void trips_ccc_changed(const struct bt_gatt_attr *attr, uint16_t value)
+{
+	ARG_UNUSED(attr);
+
+	trips_stream.notify_enabled = (value & BT_GATT_CCC_NOTIFY) != 0U;
+	if (!trips_stream.notify_enabled) {
+		trips_stream_reset();
+		printk("BLE: Trips notifications disabled\n");
+	}
+}
+
+static ssize_t write_trips(struct bt_conn *conn,
+					   const struct bt_gatt_attr *attr,
+					   const void *buf, uint16_t len,
+					   uint16_t offset, uint8_t flags)
+{
+	char command[16];
+
+	ARG_UNUSED(attr);
+	ARG_UNUSED(flags);
+
+	if (offset != 0U) {
+		return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
+	}
+
+	if (len >= sizeof(command)) {
+		return BT_GATT_ERR(BT_ATT_ERR_INVALID_ATTRIBUTE_LEN);
+	}
+
+	memcpy(command, buf, len);
+	command[len] = '\0';
+
+	if (len == 0U || strcmp(command, "start") == 0 || strcmp(command, "1") == 0) {
+		if (!trips_stream.notify_enabled) {
+			return BT_GATT_ERR(BT_ATT_ERR_CCC_IMPROPER_CONF);
+		}
+
+		if (conn == NULL || conn != current_conn) {
+			return BT_GATT_ERR(BT_ATT_ERR_UNLIKELY);
+		}
+
+		if (trips_stream.active || trips_stream.notify_in_progress) {
+			return BT_GATT_ERR(BT_ATT_ERR_PROCEDURE_IN_PROGRESS);
+		}
+
+		trips_stream_start();
+		return len;
+	}
+
+	if (strcmp(command, "cancel") == 0) {
+		trips_stream_reset();
+		return len;
+	}
+
+	return BT_GATT_ERR(BT_ATT_ERR_VALUE_NOT_ALLOWED);
+}
 
 /*
  * BLE read handler for wheel size (returns "26.30" format)
@@ -342,38 +601,28 @@ BT_GATT_SERVICE_DEFINE(bike_svc,
 						   BT_GATT_CHRC_READ,
 						   BT_GATT_PERM_READ,
 						   read_pulse, NULL, NULL),
-	BT_GATT_CUD("Pulse Count", BT_GATT_PERM_READ),
-	BT_GATT_CPF(&pulse_cpf),
+	BT_GATT_CUD("Pulse", BT_GATT_PERM_READ),
 	BT_GATT_CHARACTERISTIC(&bike_trips_uuid.uuid,
-						   BT_GATT_CHRC_READ,
-						   BT_GATT_PERM_READ,
-						   read_trips, NULL, NULL),
+					   BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE | BT_GATT_CHRC_NOTIFY,
+					   BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
+					   read_trips, write_trips, NULL),
 	BT_GATT_CUD("Trips", BT_GATT_PERM_READ),
-	BT_GATT_CPF(&trips_cpf),
+	BT_GATT_CCC(trips_ccc_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
 	BT_GATT_CHARACTERISTIC(&bike_battery_uuid.uuid,
 						   BT_GATT_CHRC_READ,
 						   BT_GATT_PERM_READ,
 						   read_battery, NULL, NULL),
 	BT_GATT_CUD("Battery", BT_GATT_PERM_READ),
-	BT_GATT_CPF(&battery_cpf),
 	BT_GATT_CHARACTERISTIC(&bike_time_uuid.uuid,
 						   BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE,
 						   BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
 						   read_time, write_time, NULL),
-	BT_GATT_CUD("Unix Time", BT_GATT_PERM_READ),
-	BT_GATT_CPF(&time_cpf),
-	BT_GATT_CHARACTERISTIC(&bike_odometer_uuid.uuid,
-						   BT_GATT_CHRC_READ,
-						   BT_GATT_PERM_READ,
-						   read_odometer, NULL, NULL),
-	BT_GATT_CUD("Odometer", BT_GATT_PERM_READ),
-	BT_GATT_CPF(&odometer_cpf),
+	BT_GATT_CUD("Time", BT_GATT_PERM_READ),
 	BT_GATT_CHARACTERISTIC(&bike_wheelsize_uuid.uuid,
 						   BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE,
 						   BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
 						   read_wheelsize, write_wheelsize, NULL),
 	BT_GATT_CUD("Wheel Size", BT_GATT_PERM_READ),
-	BT_GATT_CPF(&wheelsize_cpf),
 );
 
 /* Advertising data */
@@ -412,11 +661,24 @@ static void connected(struct bt_conn *conn, uint8_t err)
 		return;
 	}
 
+	if (current_conn != NULL) {
+		bt_conn_unref(current_conn);
+	}
+	current_conn = bt_conn_ref(conn);
+
 	printk("Connected\n");
 }
 
 static void disconnected(struct bt_conn *conn, uint8_t reason)
 {
+	trips_stream_reset();
+	trips_stream.notify_enabled = false;
+
+	if (current_conn == conn) {
+		bt_conn_unref(current_conn);
+		current_conn = NULL;
+	}
+
 	printk("Disconnected, reason 0x%02x %s\n", reason, bt_hci_err_to_str(reason));
 }
 
@@ -447,6 +709,13 @@ int ble_service_init(void)
 	printk("Bluetooth initialized\n");
 
 	k_work_init(&adv_work, adv_work_handler);
+	k_work_init(&trips_notify_work, trips_notify_work_handler);
+	k_work_queue_start(&trips_notify_work_q,
+			   trips_notify_stack,
+			   K_THREAD_STACK_SIZEOF(trips_notify_stack),
+			   7,
+			   NULL);
+	trips_stream_reset();
 
 	return 0;
 }

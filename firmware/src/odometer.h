@@ -9,8 +9,6 @@
  * Capacity with 1.5MB NVM:
  * - ~3000+ trips (8+ years at 1 trip/day)
  * - Full 5-min bucket detail for all trips
- * - Daily totals for 13+ months
- * - All-time counter
  */
 
 #ifndef ODOMETER_H
@@ -31,20 +29,13 @@
 #define BIN_INTERVAL_MINUTES  5     /* 5-min bins (client requirement) */
 #define MAX_TRIPS             3000  /* ~8 years at 1 trip/day, stored in NVM */
 #define BUCKETS_PER_TRIP      48    /* 48 bins * 5 min = 4 hours max per trip */
-#define MAX_DAILY_TOTALS      400   /* ~13 months of daily summaries */
 
 /* Trip entry with full bucket detail (~204 bytes each) */
 struct trip_entry {
-	uint64_t start_timestamp_ms;
+	uint64_t start_timestamp_s;
 	uint32_t buckets[BUCKETS_PER_TRIP];  /* pulse counts per bucket */
 	uint16_t bucket_count;               /* number of valid buckets */
 	uint16_t _reserved;                  /* alignment padding */
-};
-
-/* Daily summary (~8 bytes each) */
-struct daily_total {
-	uint32_t day_number;    /* Days since Unix epoch (fits until year 2106) */
-	uint32_t total_pulses;  /* Total pulses that day */
 };
 
 /**
@@ -59,19 +50,16 @@ int odometer_init(void);
 uint32_t odometer_get_pulse_count(void);
 
 /**
- * @brief Get all-time pulse count
- */
-uint64_t odometer_get_total_pulses(void);
-
-/**
- * @brief Get all-time distance in meters
- */
-uint32_t odometer_get_total_distance_m(void);
-
-/**
  * @brief Get total trip count stored in NVM
  */
 size_t odometer_get_trip_count(void);
+
+/**
+ * @brief Get the stable BLE/NVS identifier for a trip index
+ * @param index Trip index (0 = oldest, trip_count-1 = newest/current)
+ * @return Stable identifier, or 0 if index is invalid
+ */
+uint32_t odometer_get_trip_id(size_t index);
 
 /**
  * @brief Read a specific trip from NVM
@@ -90,16 +78,6 @@ const struct trip_entry *odometer_get_current_trip(void);
  * @brief Check if there's an active trip in progress
  */
 bool odometer_is_trip_active(void);
-
-/**
- * @brief Get pointer to daily totals array
- */
-const struct daily_total *odometer_get_daily_totals(void);
-
-/**
- * @brief Get daily totals count
- */
-size_t odometer_get_daily_total_count(void);
 
 /**
  * @brief Load odometer data from NVM

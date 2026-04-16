@@ -42,12 +42,7 @@ static const struct gpio_dt_spec pulse_gpio = GPIO_DT_SPEC_GET(PULSE_NODE, gpios
 
 /* NVS IDs - trips use IDs 1000+ */
 #define NVS_ID_TRIP_COUNT    1
-#define NVS_ID_ALL_TIME      2
 #define NVS_ID_ACTIVE_FLAG   3
-#define NVS_ID_DAILY_COUNT   4
-#define NVS_ID_DAILY_DATA    5
-#define NVS_ID_CURRENT_DAY   6
-#define NVS_ID_CURRENT_PULSE 7
 #define NVS_ID_WHEEL_SIZE    8
 #define NVS_ID_TRIP_BASE     1000  /* Trip IDs: 1000, 1001, 1002, ... */
 
@@ -67,15 +62,6 @@ static bool in_active_trip;
 /* Trip count in NVS */
 static size_t nvm_trip_count;
 
-/* Daily totals - compact historical data (~3.2KB in RAM) */
-static struct daily_total daily_totals[MAX_DAILY_TOTALS];
-static size_t daily_total_count;
-static uint32_t current_day_number;
-static uint32_t current_day_pulses;
-
-/* All-time counter */
-static uint64_t all_time_pulses;
-
 /* Wheel size (hundredths of inches, e.g., 2600 = 26.00") */
 static uint32_t wheel_size_x100 = DEFAULT_WHEEL_SIZE_X100;
 
@@ -93,8 +79,6 @@ static void save_work_handler(struct k_work *work);
 static void store_bin(uint32_t pulses);
 static void save_current_trip_to_nvs(bool completed);
 static void save_metadata_to_nvs(void);
-static void update_daily_total(uint32_t pulses);
-static uint32_t get_current_day_number(void);
 static void enter_low_power_idle(void);
 static int nvs_init_storage(void);
 
@@ -175,13 +159,12 @@ static void save_work_handler(struct k_work *work)
  */
 static void store_bin(uint32_t pulses)
 {
-	uint64_t ts = rtc_is_time_set() ? rtc_get_time_ms() : k_uptime_get();
-
-	/* Update all-time counter and daily totals */
-	if (pulses > 0) {
-		all_time_pulses += pulses;
-		update_daily_total(pulses);
+	if (!rtc_is_time_set()) {
+		/* RTC not initialized yet: skip trip storage until time is valid. */
+		return;
 	}
+
+	uint64_t ts = rtc_get_time();
 
 	/* If no pulses, end the current trip */
 	if (pulses == 0) {
@@ -210,7 +193,7 @@ static void store_bin(uint32_t pulses)
 	/* Start new trip if needed */
 	if (!in_active_trip) {
 		memset(&current_trip, 0, sizeof(current_trip));
-		current_trip.start_timestamp_ms = ts;
+		current_trip.start_timestamp_s = ts;
 		current_trip.bucket_count = 0;
 		in_active_trip = true;
 
@@ -248,83 +231,17 @@ static void store_bin(uint32_t pulses)
 }
 
 /*
- * Get current day number (days since Unix epoch)
- */
-static uint32_t get_current_day_number(void)
-{
-	if (!rtc_is_time_set()) {
-		return 0;  /* No valid time, can't track days */
-	}
-	uint64_t unix_time = rtc_get_time();
-	return (uint32_t)(unix_time / 86400);  /* Seconds per day */
-}
-
-/*
- * Update daily total - accumulates pulses per day
- */
-static void update_daily_total(uint32_t pulses)
-{
-	uint32_t today = get_current_day_number();
-	
-	if (today == 0) {
-		/* No valid RTC time - can't track daily totals */
-		return;
-	}
-
-	if (today != current_day_number) {
-		/* Day changed - save previous day if we had data */
-		if (current_day_number != 0 && current_day_pulses > 0) {
-			/* Check if we need to make room */
-			if (daily_total_count >= MAX_DAILY_TOTALS) {
-				/* Shift to discard oldest */
-				memmove(&daily_totals[0], &daily_totals[1], 
-				        sizeof(struct daily_total) * (MAX_DAILY_TOTALS - 1));
-				daily_total_count = MAX_DAILY_TOTALS - 1;
-			}
-			
-			/* Store previous day's total */
-			daily_totals[daily_total_count].day_number = current_day_number;
-			daily_totals[daily_total_count].total_pulses = current_day_pulses;
-			daily_total_count++;
-			
-			#ifdef DEBUG
-			printk("Daily total saved: day=%u pulses=%u\n", 
-			       current_day_number, current_day_pulses);
-			#endif
-			
-			save_metadata_to_nvs();
-		}
-		
-		/* Start new day */
-		current_day_number = today;
-		current_day_pulses = 0;
-	}
-	
-	current_day_pulses += pulses;
-}
-
-/*
  * Save daily totals to NVM (called on day change)
  */
 static void save_metadata_to_nvs(void)
 {
 	if (!nvs_ready) return;
 
-	nvs_write(&nvs, NVS_ID_ALL_TIME, &all_time_pulses, sizeof(all_time_pulses));
 	nvs_write(&nvs, NVS_ID_TRIP_COUNT, &nvm_trip_count, sizeof(nvm_trip_count));
 	nvs_write(&nvs, NVS_ID_ACTIVE_FLAG, &in_active_trip, sizeof(in_active_trip));
-	nvs_write(&nvs, NVS_ID_DAILY_COUNT, &daily_total_count, sizeof(daily_total_count));
-	nvs_write(&nvs, NVS_ID_CURRENT_DAY, &current_day_number, sizeof(current_day_number));
-	nvs_write(&nvs, NVS_ID_CURRENT_PULSE, &current_day_pulses, sizeof(current_day_pulses));
-
-	if (daily_total_count > 0) {
-		nvs_write(&nvs, NVS_ID_DAILY_DATA, daily_totals,
-		          daily_total_count * sizeof(struct daily_total));
-	}
 
 #ifdef DEBUG
-	printk("NVS: Metadata saved (trips=%zu, all_time=%llu)\n",
-	       nvm_trip_count, (unsigned long long)all_time_pulses);
+	printk("NVS: Metadata saved (trips=%zu)\n", nvm_trip_count);
 #endif
 }
 
@@ -335,13 +252,6 @@ static void save_metadata_to_nvs(void)
 static void save_current_trip_to_nvs(bool completed)
 {
 	if (!nvs_ready) return;
-
-	/* Don't save trips with invalid timestamps (before year 2000) */
-	const uint64_t year_2000_ms = 946684800000ULL;
-	if (current_trip.start_timestamp_ms < year_2000_ms) {
-		printk("NVS: Skipping trip save - invalid timestamp\n");
-		return;
-	}
 
 	if (completed) {
 		/* Trip completed - save to next slot and increment count */
@@ -449,19 +359,18 @@ uint32_t odometer_get_pulse_count(void)
 	return p;
 }
 
-uint64_t odometer_get_total_pulses(void)
-{
-	return all_time_pulses;
-}
-
-uint32_t odometer_get_total_distance_m(void)
-{
-	return (uint32_t)((all_time_pulses * WHEEL_CIRCUMFERENCE_MM(wheel_size_x100)) / 1000);
-}
-
 size_t odometer_get_trip_count(void)
 {
 	return nvm_trip_count + (in_active_trip ? 1 : 0);
+}
+
+uint32_t odometer_get_trip_id(size_t index)
+{
+	if (index >= odometer_get_trip_count()) {
+		return 0;
+	}
+
+	return (uint32_t)(NVS_ID_TRIP_BASE + index);
 }
 
 int odometer_read_trip(size_t index, struct trip_entry *trip_out)
@@ -504,16 +413,6 @@ bool odometer_is_trip_active(void)
 	return in_active_trip;
 }
 
-const struct daily_total *odometer_get_daily_totals(void)
-{
-	return daily_totals;
-}
-
-size_t odometer_get_daily_total_count(void)
-{
-	return daily_total_count;
-}
-
 void odometer_load_from_nvm(void)
 {
 	int rc = nvs_init_storage();
@@ -523,12 +422,8 @@ void odometer_load_from_nvm(void)
 	}
 
 	/* Load metadata */
-	nvs_read(&nvs, NVS_ID_ALL_TIME, &all_time_pulses, sizeof(all_time_pulses));
 	nvs_read(&nvs, NVS_ID_TRIP_COUNT, &nvm_trip_count, sizeof(nvm_trip_count));
 	nvs_read(&nvs, NVS_ID_ACTIVE_FLAG, &in_active_trip, sizeof(in_active_trip));
-	nvs_read(&nvs, NVS_ID_DAILY_COUNT, &daily_total_count, sizeof(daily_total_count));
-	nvs_read(&nvs, NVS_ID_CURRENT_DAY, &current_day_number, sizeof(current_day_number));
-	nvs_read(&nvs, NVS_ID_CURRENT_PULSE, &current_day_pulses, sizeof(current_day_pulses));
 
 	/* Load wheel size (use default if not stored) */
 	uint32_t stored_wheel_size;
@@ -540,13 +435,6 @@ void odometer_load_from_nvm(void)
 
 	/* Clamp values */
 	if (nvm_trip_count > MAX_TRIPS) nvm_trip_count = MAX_TRIPS;
-	if (daily_total_count > MAX_DAILY_TOTALS) daily_total_count = MAX_DAILY_TOTALS;
-
-	/* Load daily totals */
-	if (daily_total_count > 0) {
-		nvs_read(&nvs, NVS_ID_DAILY_DATA, daily_totals,
-		         daily_total_count * sizeof(struct daily_total));
-	}
 
 	/* Restore in-progress trip if active */
 	if (in_active_trip) {
@@ -560,10 +448,7 @@ void odometer_load_from_nvm(void)
 	}
 
 	printk("NVS loaded:\n");
-	printk("  All-time: %llu pulses, %u meters\n",
-	       (unsigned long long)all_time_pulses, odometer_get_total_distance_m());
 	printk("  Trips in NVS: %zu (active=%d)\n", nvm_trip_count, in_active_trip);
-	printk("  Daily totals: %zu entries\n", daily_total_count);
 	printk("  Wheel size: %u.%02u\"\n", wheel_size_x100 / 100, wheel_size_x100 % 100);
 }
 
