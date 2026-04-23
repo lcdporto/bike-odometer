@@ -3,8 +3,12 @@
 
 	let { data } = $props();
 
+	function toDisplayTimestamp(timestamp: number): number {
+		return timestamp < 1_000_000_000_000 ? timestamp * 1000 : timestamp;
+	}
+
 	function fmtDate(timestamp: number): string {
-		return new Date(timestamp).toLocaleString();
+		return new Date(toDisplayTimestamp(timestamp)).toLocaleString();
 	}
 
 	function fmtDistance(distance: number): string {

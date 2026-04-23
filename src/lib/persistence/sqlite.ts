@@ -152,6 +152,28 @@ type TripRow = {
 
 type BucketRow = { rotations: number; timestamp: number; idx: number };
 
+const FIVE_MINUTES_MS = 5 * 60 * 1000;
+
+function toUnixSeconds(timestampMs: number): number {
+	return Math.floor(timestampMs / 1000);
+}
+
+function normalizePersistedTimestamp(timestamp: number): number {
+	return timestamp < 1_000_000_000_000 ? timestamp * 1000 : timestamp;
+}
+
+function normalizeBucketTimestamp(timestamp: number, tripStartDate: number, bucketIndex: number): number {
+	if (timestamp >= 1_000_000_000_000) {
+		return timestamp;
+	}
+
+	if (bucketIndex > 0 && timestamp - tripStartDate === bucketIndex * FIVE_MINUTES_MS) {
+		return normalizePersistedTimestamp(tripStartDate) + bucketIndex * FIVE_MINUTES_MS;
+	}
+
+	return normalizePersistedTimestamp(timestamp);
+}
+
 async function loadTripsForSensor(sensorId: string): Promise<Trip[]> {
 	const tripRows = await query<TripRow>(
 		`SELECT * FROM trips WHERE sensor_id = ? ORDER BY start_date DESC;`,
@@ -160,15 +182,19 @@ async function loadTripsForSensor(sensorId: string): Promise<Trip[]> {
 
 	const trips: Trip[] = [];
 	for (const row of tripRows) {
+		const startTimestamp = normalizePersistedTimestamp(row.start_date);
 		const buckets = await query<BucketRow>(
 			`SELECT rotations, timestamp, idx FROM buckets WHERE trip_id = ? ORDER BY idx ASC;`,
 			[row.id]
 		);
-		const formattedBuckets = buckets.map((b) => ({
-			time: formatTime24h(new Date(b.timestamp)),
-			rotations: b.rotations,
-			timestamp: b.timestamp
-		}));
+		const formattedBuckets = buckets.map((bucket) => {
+			const bucketTimestamp = normalizeBucketTimestamp(bucket.timestamp, row.start_date, bucket.idx);
+			return {
+				time: formatTime24h(new Date(bucketTimestamp)),
+				rotations: bucket.rotations,
+				timestamp: bucketTimestamp
+			};
+		});
 
 		// Recalculate distance using correct wheel circumference formula
 		// wheel_size is diameter in inches, convert to circumference in meters
@@ -178,13 +204,13 @@ async function loadTripsForSensor(sensorId: string): Promise<Trip[]> {
 
 		trips.push({
 			id: row.id,
-			date: new Date(row.start_date).toLocaleDateString('en-US', {
+			date: new Date(startTimestamp).toLocaleDateString('en-US', {
 				weekday: 'short',
 				month: 'short',
 				day: 'numeric'
 			}),
-			startTime: formatTime24h(new Date(row.start_date)),
-			endTime: formatTime24h(new Date(row.start_date + row.duration * 60 * 1000)),
+			startTime: formatTime24h(new Date(startTimestamp)),
+			endTime: formatTime24h(new Date(startTimestamp + row.duration * 60 * 1000)),
 			distance: correctedDistance,
 			duration: row.duration,
 			avgSpeed: correctedAvgSpeed,
@@ -222,10 +248,11 @@ async function upsertSensor(sensor: Sensor, wheelSize: string, lastSeen: number)
 
 export async function saveSensorDescriptor(sensor: Sensor, wheelSize: string, trips: Trip[]) {
 	const now = Date.now();
-	await upsertSensor(sensor, wheelSize, now);
+	const nowSeconds = toUnixSeconds(now);
+	await upsertSensor(sensor, wheelSize, nowSeconds);
 
 	for (const trip of trips) {
-		const startTimestamp = trip.buckets[0]?.timestamp ?? now;
+		const startTimestamp = toUnixSeconds(trip.buckets[0]?.timestamp ?? now);
 		await run(`DELETE FROM buckets WHERE trip_id = ?;`, [trip.id]);
 		await run(`DELETE FROM trips WHERE id = ?;`, [trip.id]);
 		await run(
@@ -246,14 +273,14 @@ export async function saveSensorDescriptor(sensor: Sensor, wheelSize: string, tr
 			const bucket = trip.buckets[i];
 			await run(
 				`INSERT OR REPLACE INTO buckets (trip_id, idx, rotations, timestamp) VALUES (?, ?, ?, ?);`,
-				[trip.id, i, bucket.rotations, bucket.timestamp]
+				[trip.id, i, bucket.rotations, toUnixSeconds(bucket.timestamp)]
 			);
 		}
 	}
 }
 
 export async function saveSensorWheelSize(sensor: Sensor, wheelSize: string) {
-	await upsertSensor(sensor, wheelSize, Date.now());
+	await upsertSensor(sensor, wheelSize, toUnixSeconds(Date.now()));
 }
 
 export async function loadLatestSensorWithTrips(): Promise<{ sensor: Sensor; wheelSize: string; trips: Trip[] } | null> {
@@ -286,7 +313,7 @@ export async function getAllSensors(): Promise<Array<Sensor & { lastSeen?: numbe
 		id: row.id,
 		name: row.name,
 		signalStrength: row.strength,
-		lastSeen: row.last_seen
+		lastSeen: normalizePersistedTimestamp(row.last_seen)
 	}));
 }
 

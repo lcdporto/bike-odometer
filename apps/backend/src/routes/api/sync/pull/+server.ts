@@ -2,6 +2,10 @@ import { json, type RequestHandler } from '@sveltejs/kit';
 import { pullSyncData } from '$lib/server/db';
 import type { SyncPullRequest, SyncPullResponse } from '$lib/types/sync';
 
+function toUnixSeconds(timestampMs: number): number {
+	return Math.floor(timestampMs / 1000);
+}
+
 function isValidPullBody(body: unknown): body is SyncPullRequest {
 	if (!body || typeof body !== 'object') return false;
 	const value = body as Record<string, unknown>;
@@ -19,7 +23,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	const data = pullSyncData(body.sensorId, body.since);
 
 	const response: SyncPullResponse = {
-		serverTimestamp: Date.now(),
+		serverTimestamp: toUnixSeconds(Date.now()),
 		sensor: data.sensor,
 		trips: data.trips,
 		buckets: data.buckets

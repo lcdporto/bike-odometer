@@ -9,6 +9,10 @@ import type {
 	SyncBucketRecord
 } from '$lib/types/sync';
 
+function toUnixSeconds(timestampMs: number): number {
+	return Math.floor(timestampMs / 1000);
+}
+
 function getSyncApiBaseUrl(): string {
 	return PUBLIC_BACKEND_API_URL;
 }
@@ -18,7 +22,7 @@ function toSyncRecords(sensorId: string, wheelSize: string, syncedAt: number, tr
 	const bucketRecords: SyncBucketRecord[] = [];
 
 	for (const trip of trips) {
-		const startDate = trip.buckets[0]?.timestamp ?? syncedAt;
+		const startDate = toUnixSeconds(trip.buckets[0]?.timestamp ?? syncedAt * 1000);
 		tripRecords.push({
 			id: trip.id,
 			sensorId,
@@ -38,7 +42,7 @@ function toSyncRecords(sensorId: string, wheelSize: string, syncedAt: number, tr
 				tripId: trip.id,
 				idx,
 				rotations: bucket.rotations,
-				timestamp: bucket.timestamp,
+				timestamp: toUnixSeconds(bucket.timestamp),
 				updatedAt: syncedAt,
 				deletedAt: null
 			});
@@ -57,7 +61,7 @@ export async function syncSensorSnapshot(sensorId: string): Promise<SyncPushResp
 		return null;
 	}
 
-	const syncedAt = Date.now();
+	const syncedAt = toUnixSeconds(Date.now());
 	const { tripRecords, bucketRecords } = toSyncRecords(
 		sensorId,
 		sensorData.wheelSize,

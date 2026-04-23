@@ -1,4 +1,4 @@
-import { initializeBLE, scanForESP32Sensors, readSensorDescriptor, readWheelSizeDescriptor } from './ble';
+import { initializeBLE, scanForESP32Sensors, downloadTrips, readWheelSizeDescriptor } from './ble';
 import { saveSensorDescriptor } from '$lib/persistence/sqlite';
 import { syncSensorSnapshot } from '$lib/services/sync';
 import type { Sensor } from '$lib/stores/sensor.svelte';
@@ -8,6 +8,7 @@ import { formatTime24h, getWheelCircumference, calculateDistance } from '$lib/ut
 
 const SCAN_INTERVAL = 10000; // 10 seconds between scans
 const SCAN_DURATION = 5000; // 5 seconds per scan
+const FIVE_MINUTES_MS = 5 * 60 * 1000;
 
 // Convert RSSI (signal strength in dBm, typically -100 to -30) to percentage
 function rssiToPercentage(rssi: number): number {
@@ -24,7 +25,7 @@ type SensorDescriptor = {
 		 */
 		id: number;
 		/**
-		 * Start date in milliseconds since 1970 epoch
+		 * Start date in seconds since 1970 epoch
 		 */
 		startDate: number;
 		/**
@@ -39,11 +40,15 @@ let scanInterval: number | null = null;
 const discoveredDevices = new Set<string>();
 
 function normalizeWheelSizeValue(wheelSize: string): string {
+	if (wheelSize.endsWith(".00")) {
+		return wheelSize.slice(0, -3).trim();
+	}
 	return wheelSize.trim() || '26';
 }
 
 function toRotationBucket(trip: SensorDescriptor['trips'][0], idx: number) {
-	const timestamp = trip.startDate + idx * 5 * 60 * 1000;
+	const tripStartTimestamp = trip.startDate * 1000;
+	const timestamp = tripStartTimestamp + idx * FIVE_MINUTES_MS;
 	return {
 		time: formatTime24h(new Date(timestamp)),
 		rotations: trip.buckets[idx] || 0,
@@ -57,8 +62,8 @@ function toTrip(trip: SensorDescriptor['trips'][0], wheelCircumference: number) 
 	const distance = calculateDistance(totalRotations, wheelCircumference);
 	const duration = buckets.length * 5;
 	const avgSpeed = duration > 0 ? (distance / duration) * 60 : 0;
-	const startDate = new Date(trip.startDate);
-	const endDate = new Date(trip.startDate + duration * 60 * 1000);
+	const startDate = new Date(trip.startDate * 1000);
+	const endDate = new Date(startDate.getTime() + duration * 60 * 1000);
 
 	return {
 		id: `trip-${trip.id}`,
@@ -84,8 +89,8 @@ async function processSensor(deviceId: string, deviceName: string, strength: num
 	try {
 		console.log(`Processing sensor: ${deviceName} (${deviceId})`);
 		
-		// Read sensor descriptor from BLE
-		const descriptor = await readSensorDescriptor<SensorDescriptor>(device);
+		// Download trips from device using chunked NOTIFY protocol
+		const descriptor = await downloadTrips<SensorDescriptor>(device);
 		console.log('Sensor descriptor received:', descriptor);
 		const wheelSize = normalizeWheelSizeValue(await readWheelSizeDescriptor(device.deviceId));
 		console.log('Wheel size descriptor received:', wheelSize);

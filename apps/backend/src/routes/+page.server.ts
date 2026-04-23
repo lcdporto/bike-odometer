@@ -1,5 +1,9 @@
 import { getDashboardData } from '$lib/server/db';
 
+function toUnixSeconds(timestampMs: number): number {
+	return Math.floor(timestampMs / 1000);
+}
+
 export const load = async () => {
 	const sensors = getDashboardData();
 
@@ -16,6 +20,6 @@ export const load = async () => {
 	return {
 		summary,
 		sensors,
-		generatedAt: Date.now()
+		generatedAt: toUnixSeconds(Date.now())
 	};
 };

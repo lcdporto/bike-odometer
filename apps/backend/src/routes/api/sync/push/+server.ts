@@ -2,6 +2,10 @@ import { json, type RequestHandler } from '@sveltejs/kit';
 import { pushSyncData } from '$lib/server/db';
 import type { SyncPushRequest, SyncPushResponse } from '$lib/types/sync';
 
+function toUnixSeconds(timestampMs: number): number {
+	return Math.floor(timestampMs / 1000);
+}
+
 function isValidPushBody(body: unknown): body is SyncPushRequest {
 	if (!body || typeof body !== 'object') return false;
 	const value = body as Record<string, unknown>;
@@ -29,7 +33,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	pushSyncData(body.sensor, body.trips, body.buckets);
 
 	const response: SyncPushResponse = {
-		appliedAt: Date.now()
+		appliedAt: toUnixSeconds(Date.now())
 	};
 
 	return json(response);

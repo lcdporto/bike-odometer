@@ -2,11 +2,18 @@ import { BleClient, type BleDevice, type ScanResult } from '@capacitor-community
 import { isPlaceholderDeviceName } from '$lib/utils';
 import { toast } from "svelte-sonner";
 
-// UUID constants from ESP32 firmware
-const SERVICE_UUID = '78563412-7856-3412-5678-123412345678';
-const CHARACTERISTIC_UUID = '78563412-7856-3412-5678-123412345688';
-const DETECTION_TIMESTAMP_FIELD_UUID = '78563412-7856-3412-5678-12341234568b';
-const WHEEL_SIZE_DESCRIPTOR_UUID = '1234568d-1234-5678-1234-567812345678';
+// UUID constants — byte-reversed from spec v1 (firmware transmits UUIDs little-endian)
+const SERVICE_UUID =    '78563412-7856-3412-5678-123412345678';
+const PULSE_UUID =      '78563412-7856-3412-5678-123412345679';
+const TRIPS_UUID =      '78563412-7856-3412-5678-123412345688';
+const BATTERY_UUID =    '78563412-7856-3412-5678-12341234568a';
+const TIME_UUID =       '78563412-7856-3412-5678-12341234568b';
+const ODOMETER_UUID =   '78563412-7856-3412-5678-12341234568c';
+const WHEEL_SIZE_UUID = '78563412-7856-3412-5678-12341234568d';
+
+// Trips download timeout (ms)
+const TRIPS_TIMEOUT_MS = 30_000;
+
 
 export interface ScannedSensor {
 	macAddress: string;
@@ -35,7 +42,7 @@ export async function requestBLEPermissions(): Promise<void> {
 }
 
 /**
- * Scan for BLE devices that start with "ESP32" and have the expected service UUID
+ * Scan for Bike_Odometer BLE devices advertising the primary service UUID
  * @param scanDurationMs Duration to scan in milliseconds (default 5000ms)
  * @returns Array of discovered sensors
  */
@@ -116,8 +123,7 @@ async function writeDetectionTimestamp(deviceId: string): Promise<void> {
 			console.log(`[BLE] No characteristics discovered for ${deviceId}`);
 		}
 
-		await BleClient.write(deviceId, SERVICE_UUID, DETECTION_TIMESTAMP_FIELD_UUID, view);
-		toast(`Wrote detection timestamp to ${deviceId}`);
+		await BleClient.write(deviceId, SERVICE_UUID, TIME_UUID, view);
 
 		console.log(`[BLE] Wrote detection timestamp ${unixTimestampSeconds} to ${deviceId}`);
 	} catch (error) {
@@ -195,7 +201,9 @@ async function writeStringCharacteristic(
 }
 
 export async function readWheelSizeDescriptor(deviceId: string): Promise<string> {
-	const wheelSize = await readStringCharacteristic(deviceId, WHEEL_SIZE_DESCRIPTOR_UUID, 'wheel size descriptor');
+	const wheelSize = await readStringCharacteristic(deviceId, WHEEL_SIZE_UUID, 'wheel size descriptor');
+	console.log(`[BLE] Wheel size descriptor for ${deviceId}:`, wheelSize);
+	
 	if (!wheelSize) {
 		throw new Error(`Wheel size descriptor is empty for device ${deviceId}`);
 	}
@@ -205,80 +213,82 @@ export async function readWheelSizeDescriptor(deviceId: string): Promise<string>
 export async function writeWheelSizeDescriptor(deviceId: string, wheelSizeInches: string): Promise<void> {
 	await writeStringCharacteristic(
 		deviceId,
-		WHEEL_SIZE_DESCRIPTOR_UUID,
+		WHEEL_SIZE_UUID,
 		wheelSizeInches.trim(),
 		'wheel size descriptor'
 	);
 }
 
 /**
- * Connect to a BLE device and read the sensor descriptor JSON from the characteristic
- * @param device The BLE device to connect to
- * @returns The sensor descriptor as a parsed JSON object
+ * Download all trips from a device using the chunked NOTIFY protocol.
+ *
+ * Flow:
+ *   1. Connect
+ *   2. Enable notifications on TRIPS_UUID (CCCD handled by BleClient)
+ *   3. Write "start" to trigger the firmware to stream the JSON document
+ *   4. Accumulate chunks until a complete JSON document is received
+ *   5. Parse and return
  */
-export async function readSensorDescriptor<T = unknown>(device: BleDevice): Promise<T> {
+export async function downloadTrips<T = unknown>(device: BleDevice): Promise<T> {
+	const deviceId = device.deviceId;
+
+	await BleClient.connect(deviceId, () => {
+		console.log(`[BLE] Device ${deviceId} disconnected`);
+	});
+
 	try {
-		// Connect to device
-		await BleClient.connect(device.deviceId, () => {
-			console.log(`Device ${device.deviceId} disconnected`);
+		let resolveTransfer!: (value: T) => void;
+		const transferPromise = new Promise<T>((resolve) => {
+			resolveTransfer = resolve;
 		});
 
-		// Read the characteristic containing the JSON descriptor
-		const dataView = await BleClient.read(device.deviceId, SERVICE_UUID, CHARACTERISTIC_UUID);
+		const accumulatedBytes: number[] = [];
 
-		// Convert DataView to string
-		const jsonString = decodeCharacteristicString(dataView);
-		console.log('Read sensor descriptor JSON:', jsonString);
+		await BleClient.startNotifications(deviceId, SERVICE_UUID, TRIPS_UUID, (dataView) => {
+			for (let i = 0; i < dataView.byteLength; i++) {
+				accumulatedBytes.push(dataView.getUint8(i));
+			}
 
-		// Remove any trailing garbage
-		let cleanedString = jsonString;
+			const text = new TextDecoder('utf-8').decode(new Uint8Array(accumulatedBytes));
 
-		// Try to find the last valid closing brace for the JSON object
-		// This handles cases where there's garbage after the valid JSON
-		try {
-			// First, try to parse as-is
-			const descriptor = JSON.parse(cleanedString) as T;
-			return descriptor;
-		} catch {
-			// If that fails, try to find the last valid JSON by searching for the last }
-			// and trimming everything after it
-			let lastBrace = -1;
-			let braceCount = 0;
-
-			for (let i = 0; i < cleanedString.length; i++) {
-				if (cleanedString[i] === '{' || cleanedString[i] === '[') {
-					braceCount++;
-				} else if (cleanedString[i] === '}' || cleanedString[i] === ']') {
-					braceCount--;
-					if (braceCount === 0) {
-						lastBrace = i;
-						break;
-					}
+			// The spec says the document ends with ]}; use JSON.parse as the authority
+			if (text.trimEnd().endsWith(']}')) {
+				try {
+					const parsed = JSON.parse(text) as T;
+					console.log(`[BLE] Trips download complete; trips data:`, parsed);
+					resolveTransfer(parsed);
+				} catch {
+					// Incomplete JSON that happens to end with ]}; keep accumulating
 				}
 			}
+		});
 
-			if (lastBrace !== -1) {
-				cleanedString = cleanedString.substring(0, lastBrace + 1);
-				console.log('Cleaned JSON string:', cleanedString);
-			}
+		// Initiate transfer
+		await BleClient.write(deviceId, SERVICE_UUID, TRIPS_UUID, encodeCharacteristicString('start'));
+		console.log(`[BLE] Sent 'start' to ${deviceId}, awaiting trips chunks...`);
+
+		const timeoutPromise = new Promise<never>((_, reject) =>
+			setTimeout(() => reject(new Error(`Trips download timed out after ${TRIPS_TIMEOUT_MS}ms`)), TRIPS_TIMEOUT_MS)
+		);
+
+		const result = await Promise.race([transferPromise, timeoutPromise]);
+
+		try {
+			await BleClient.stopNotifications(deviceId, SERVICE_UUID, TRIPS_UUID);
+		} catch {
+			// Non-fatal if stop fails
 		}
 
-		// Parse and return JSON
-		const descriptor = JSON.parse(cleanedString) as T;
-
-		// Disconnect after reading
-		await BleClient.disconnect(device.deviceId);
-
-		return descriptor;
+		return result;
 	} catch (error) {
-		console.error('Failed to read sensor descriptor:', error);
-		// Ensure we disconnect even on error
+		console.error('[BLE] Failed to download trips:', error);
+		throw error;
+	} finally {
 		try {
-			await BleClient.disconnect(device.deviceId);
+			await BleClient.disconnect(deviceId);
 		} catch {
 			// Ignore disconnect errors
 		}
-		throw error;
 	}
 }
 
