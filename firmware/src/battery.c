@@ -1,7 +1,7 @@
 /*
  * Battery module - CR2032 voltage estimation via ADC
  *
- * Uses SAADC internal VDD/2 channel to measure supply voltage.
+ * Uses SAADC internal VDD channel to measure supply voltage.
  * CR2032 discharge curve (approximation):
  *   3.0V = 100% (fresh)
  *   2.9V = 90%
@@ -26,12 +26,11 @@
 #define ADC_RESOLUTION 12
 
 /*
- * Voltage calculation for VDD/2 with gain 1/4 and 0.6V internal reference:
- * - ADC full scale = 0.6V * 4 (reciprocal of 1/4 gain) = 2.4V at input
- * - Input is VDD/2, so VDD full scale = 2.4V * 2 = 4.8V
- * - VDD (mV) = raw * 4800 / 4095
+ * Voltage calculation for VDD with gain 1/6 and 0.6V internal reference:
+ * - ADC full scale = 0.6V * 6 (reciprocal of 1/6 gain) = 3.6V at input
+ * - Input is VDD, so VDD (mV) = raw * 3600 / 4095
  */
-#define ADC_FULL_SCALE_MV 4800
+#define ADC_FULL_SCALE_MV 3600
 
 static const struct device *adc_dev;
 static uint16_t battery_voltage_mv;
