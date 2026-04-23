@@ -118,7 +118,7 @@ The Trips characteristic streams a single UTF-8 JSON document over notifications
 The document shape is:
 
 ```json
-{"trips":[{"id":1000,"startDateSec":1712667000,"buckets":[1,2,3]}]}
+{"trips":[{"id":1000,"startDate":1712667000,"buckets":[1,2,3]}]}
 ```
 
 ### Trip identifier semantics
@@ -131,7 +131,7 @@ Each trip object includes an `id` field.
 
 Timestamp semantics:
 
-- `startDateSec` is Unix time in **seconds**.
+- `startDate` is Unix time in **seconds**.
 
 The identifier is stable for stored trips because trips are appended to NVS slots and are not currently renumbered or compacted.
 

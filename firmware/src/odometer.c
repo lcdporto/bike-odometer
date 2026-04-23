@@ -220,8 +220,8 @@ static void store_bin(uint32_t pulses)
 
 #ifdef DEBUG
 	uint32_t distance = pulses * WHEEL_CIRCUMFERENCE_MM(wheel_size_x100);
-	printk("Bucket stored: bucket=%u pulses=%u distance_m=%.3f\n",
-	       current_trip.bucket_count, pulses, distance / 1000.0);
+	printk("Bucket stored: bucket=%u pulses=%u\n",
+	       current_trip.bucket_count, pulses);
 #endif
 
 	/* Backup current trip periodically (every 30 min = 6 bins) */
