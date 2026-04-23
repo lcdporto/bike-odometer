@@ -20,7 +20,7 @@
 #include <stdbool.h>
 #include <string.h>
 
-#define DEVICE_NAME             CONFIG_BT_DEVICE_NAME
+#define DEVICE_NAME             CONFIG_BT_DEVICE_NAME + "_" + MACRO_STRINGIFY(CONFIG_BT_DEVICE_NAME_MAC_SUFFIX)
 #define DEVICE_NAME_LEN         (sizeof(DEVICE_NAME) - 1)
 #define TRIPS_NOTIFY_STACK_SIZE 2048
 
@@ -101,7 +101,7 @@ static ssize_t read_trips(struct bt_conn *conn,
 		trip_id = odometer_get_trip_id(t);
 
 		written = snprintf(trip_json + tpos, sizeof(trip_json) - tpos,
-					   "%s{\"id\":%u,\"startDateSec\":%llu,\"buckets\":[",
+					   "%s{\"id\":%u,\"startDate\":%llu,\"buckets\":[",
 					   (t > 0) ? "," : "",
 					   trip_id,
 					   (unsigned long long)trip.start_timestamp_s);
@@ -276,7 +276,7 @@ static size_t trips_stream_build_chunk(char *chunk, size_t chunk_size)
 			break;
 
 		case TRIPS_STREAM_TRIP_START:
-			written = snprintf(part, sizeof(part), "%s{\"id\":%u,\"startDateSec\":%llu,\"buckets\":[",
+			written = snprintf(part, sizeof(part), "%s{\"id\":%u,\"startDate\":%llu,\"buckets\":[",
 					   trips_stream.sent_any_trip ? "," : "",
 					   trips_stream.trip_id,
 					   (unsigned long long)trips_stream.trip.start_timestamp_s);
