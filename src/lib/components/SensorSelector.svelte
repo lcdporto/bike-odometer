@@ -1,9 +1,8 @@
 <script lang="ts">
 	import type { Sensor } from '$lib/stores/sensor.svelte';
 	import { Bluetooth, BluetoothSearching, Loader2, Signal, SignalLow, SignalMedium, Clock } from '@lucide/svelte';
-	import { getAllSensors, getSensorWithTrips } from '$lib/persistence/sqlite';
-	import { sensorState } from '$lib/stores/sensor.svelte';
-	import { tripsState } from '$lib/stores/trips.svelte';
+	import { getAllSensors } from '$lib/persistence/sqlite';
+	import { loadAndApplySensorData } from '$lib/state/app-state';
 	import { bleDevicesState } from '$lib/stores/ble-devices.svelte';
 	import { resolveDisplaySensorName } from '$lib/utils';
 	
@@ -64,12 +63,7 @@
 		errorMessage = null;
 		
 		try {
-			// Load sensor data from DB
-			const sensorData = await getSensorWithTrips(sensor.id);
-			
-			if (!sensorData) {
-				throw new Error('Sensor data not found in database');
-			}
+			const sensorData = await loadAndApplySensorData(sensor);
 			
 			console.log('Loaded sensor data:', {
 				sensorId: sensor.id,
@@ -78,53 +72,6 @@
 				latestTripBuckets: sensorData.trips[0]?.buckets.length || 0
 			});
 			
-			// Log all trips retrieved
-			console.log('===== TRIPS RETRIEVED =====');
-			console.log(`Total trips: ${sensorData.trips.length}`);
-			// Calculate wheel circumference in meters from diameter in inches
-			const wheelDiameterInches = parseFloat(sensorData.wheelSize);
-			const wheelCircumferenceMeters = (wheelDiameterInches * Math.PI * 0.0254);
-			console.log(`Wheel size: ${wheelDiameterInches}" (circumference: ${wheelCircumferenceMeters.toFixed(3)} m)`);
-			
-			sensorData.trips.forEach((trip, tripIndex) => {
-				console.log(`\nTrip ${tripIndex + 1}:`, {
-					id: trip.id,
-					startTime: trip.startTime,
-					endTime: trip.endTime,
-					totalRotations: trip.totalRotations,
-					totalDistance: `${trip.distance.toFixed(3)} km`,
-					bucketCount: trip.buckets.length
-				});
-				
-				// Log bucket details with distance and wheel spins
-				console.log(`  Buckets for Trip ${tripIndex + 1}:`);
-				trip.buckets.forEach((bucket, bucketIndex) => {
-					const distanceInBucketMeters = bucket.rotations * wheelCircumferenceMeters;
-					console.log(`    Bucket ${bucketIndex + 1}:`, {
-						timestamp: new Date(bucket.timestamp).toISOString(),
-						wheelSpins: bucket.rotations,
-						distance: `${distanceInBucketMeters.toFixed(2)} m (${(distanceInBucketMeters / 1000).toFixed(3)} km)`
-					});
-				});
-			});
-			console.log('===========================');
-			
-			// Apply to state
-			sensorState.setWheelSize(sensorData.wheelSize);
-			sensorState.connectSensor(sensor);
-			tripsState.setTrips(sensorData.trips);
-			
-			// Set rotation buckets from latest trip
-			if (sensorData.trips.length > 0) {
-				const latestTrip = sensorData.trips[0];
-				sensorState.setRotationBuckets(latestTrip.buckets);
-				console.log('Set rotation buckets:', latestTrip.buckets.length, 'buckets');
-			} else {
-				sensorState.setRotationBuckets([]);
-				console.log('No trips found, set empty rotation buckets');
-			}
-			
-			// Call the onConnect callback
 			onConnect(sensor);
 		} catch (error) {
 			console.error('Failed to connect to sensor:', error);

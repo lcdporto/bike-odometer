@@ -1,7 +1,9 @@
 import { initializeBLE, scanForESP32Sensors, downloadTrips, readWheelSizeDescriptor } from './ble';
 import { saveSensorDescriptor } from '$lib/persistence/sqlite';
 import { syncSensorSnapshot } from '$lib/services/sync';
+import { applySensorWithTrips } from '$lib/state/app-state';
 import type { Sensor } from '$lib/stores/sensor.svelte';
+import { sensorState } from '$lib/stores/sensor.svelte';
 import type { BleDevice } from '@capacitor-community/bluetooth-le';
 import { bleDevicesState } from '$lib/stores/ble-devices.svelte';
 import { formatTime24h, getWheelCircumference, calculateDistance } from '$lib/utils';
@@ -109,6 +111,10 @@ async function processSensor(deviceId: string, deviceName: string, strength: num
 		// Save to database
 		await saveSensorDescriptor(sensor, wheelSize, trips);
 		console.log(`Sensor ${deviceName} data saved to DB`);
+
+		if (sensorState.connectedSensor?.id === sensor.id) {
+			applySensorWithTrips({ sensor, wheelSize, trips }, sensorState.connectedSensor);
+		}
 
 		// Sync latest snapshot to backend
 		syncSensorSnapshot(sensor.id).catch((error) => {
