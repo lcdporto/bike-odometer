@@ -1,19 +1,22 @@
 <script lang="ts">
 	import { Bike, Bluetooth, BarChart3, History } from '@lucide/svelte';
 	import { Select, SelectContent, SelectItem, SelectTrigger } from '$lib/components/ui/select';
+	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { page } from '$app/state';
 	import { sensorState } from '$lib/stores/sensor.svelte';
 	import { bleDevicesState } from '$lib/stores/ble-devices.svelte';
 	import type { Sensor } from '$lib/stores/sensor.svelte';
 	import { writeWheelSizeDescriptor } from '$lib/services/ble';
 	import { saveSensorWheelSize } from '$lib/persistence/sqlite';
-	import { goto } from '$app/navigation';
-	import { page } from '$app/state';
+	import { initializeAppDataFromSensors } from '$lib/state/app-state';
 	import { WHEEL_SIZES, DEFAULT_WHEEL_SIZE } from '$lib/config/wheels';
 	import { resolveDisplaySensorName } from '$lib/utils';
+	import { onMount } from 'svelte';
 
 	let connectedSensor = $state<Sensor | null>(null);
 	let wheelSize = $state(DEFAULT_WHEEL_SIZE);
+	let isInitializing = $state(true);
 	let liveConnectedDeviceIds = $derived(new Set(bleDevicesState.connectedDevices.map((device) => device.id)));
 	let isLiveSensorSelected = $derived(
 		connectedSensor ? liveConnectedDeviceIds.has(connectedSensor.id) : false
@@ -26,6 +29,17 @@
 	$effect(() => {
 		connectedSensor = sensorState.connectedSensor;
 		wheelSize = sensorState.wheelSize;
+	});
+
+	onMount(async () => {
+		await initializeAppDataFromSensors();
+		isInitializing = false;
+	});
+
+	$effect(() => {
+		if (!isInitializing && !sensorState.isConnected) {
+			goto(resolve('/pairing'));
+		}
 	});
 
 	async function handleWheelSizeChange(nextWheelSize: string) {
@@ -59,12 +73,11 @@
 	let { children } = $props();
 </script>
 
-<div class="flex h-dvh flex-col bg-background"
->
+<div class="flex h-dvh flex-col bg-background">
 	<!-- Header -->
 	<header
-	style:padding-top="max(env(safe-area-inset-top), 12px)"
-	class="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+		style:padding-top="max(env(safe-area-inset-top), 12px)"
+		class="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
 		<div class="flex items-center gap-2">
 			<div class="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
 				<Bike class="h-5 w-5 text-primary" />
@@ -101,8 +114,9 @@
 		{@render children()}
 	</main>
 
-	<nav class="flex items-center justify-around border-t border-border bg-card px-4 py-2"
-	style:padding-bottom="max(env(safe-area-inset-bottom), 8px)">
+	<nav
+		class="flex items-center justify-around border-t border-border bg-card px-4 py-2"
+		style:padding-bottom="max(env(safe-area-inset-bottom), 8px)">
 		<a
 			href={resolve('/current')}
 			class="flex flex-col items-center gap-1 px-4 py-1.5 rounded-lg transition-colors {isCurrentActive

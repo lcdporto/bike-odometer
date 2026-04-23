@@ -14,10 +14,6 @@ export interface SyncTripRecord {
 	sensorId: string;
 	startDate: number;
 	wheelSize: string;
-	distance: number;
-	duration: number;
-	avgSpeed: number;
-	totalRotations: number;
 	updatedAt: number;
 	deletedAt: NullableNumber;
 }

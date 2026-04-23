@@ -102,10 +102,6 @@ async function ensureSchema(conn: SQLiteDBConnection) {
 		sensor_id TEXT,
 		start_date INTEGER,
 		wheel_size TEXT,
-		distance REAL,
-		duration INTEGER,
-		avg_speed REAL,
-		total_rotations INTEGER,
 		FOREIGN KEY(sensor_id) REFERENCES sensors(id)
 	);
 	CREATE TABLE IF NOT EXISTS buckets (
@@ -144,34 +140,16 @@ type TripRow = {
 	sensor_id: string;
 	start_date: number;
 	wheel_size: string;
-	distance: number;
-	duration: number;
-	avg_speed: number;
-	total_rotations: number;
 };
 
-type BucketRow = { rotations: number; timestamp: number; idx: number };
-
-const FIVE_MINUTES_MS = 5 * 60 * 1000;
+type BucketRow = { rotations: number; timestamp: number };
 
 function toUnixSeconds(timestampMs: number): number {
 	return Math.floor(timestampMs / 1000);
 }
 
-function normalizePersistedTimestamp(timestamp: number): number {
-	return timestamp < 1_000_000_000_000 ? timestamp * 1000 : timestamp;
-}
-
-function normalizeBucketTimestamp(timestamp: number, tripStartDate: number, bucketIndex: number): number {
-	if (timestamp >= 1_000_000_000_000) {
-		return timestamp;
-	}
-
-	if (bucketIndex > 0 && timestamp - tripStartDate === bucketIndex * FIVE_MINUTES_MS) {
-		return normalizePersistedTimestamp(tripStartDate) + bucketIndex * FIVE_MINUTES_MS;
-	}
-
-	return normalizePersistedTimestamp(timestamp);
+function unixSecondsToMilliseconds(timestamp: number): number {
+	return timestamp * 1000;
 }
 
 async function loadTripsForSensor(sensorId: string): Promise<Trip[]> {
@@ -182,13 +160,13 @@ async function loadTripsForSensor(sensorId: string): Promise<Trip[]> {
 
 	const trips: Trip[] = [];
 	for (const row of tripRows) {
-		const startTimestamp = normalizePersistedTimestamp(row.start_date);
+		const startTimestamp = unixSecondsToMilliseconds(row.start_date);
 		const buckets = await query<BucketRow>(
-			`SELECT rotations, timestamp, idx FROM buckets WHERE trip_id = ? ORDER BY idx ASC;`,
+			`SELECT rotations, timestamp FROM buckets WHERE trip_id = ? ORDER BY idx ASC;`,
 			[row.id]
 		);
 		const formattedBuckets = buckets.map((bucket) => {
-			const bucketTimestamp = normalizeBucketTimestamp(bucket.timestamp, row.start_date, bucket.idx);
+			const bucketTimestamp = unixSecondsToMilliseconds(bucket.timestamp);
 			return {
 				time: formatTime24h(new Date(bucketTimestamp)),
 				rotations: bucket.rotations,
@@ -196,11 +174,11 @@ async function loadTripsForSensor(sensorId: string): Promise<Trip[]> {
 			};
 		});
 
-		// Recalculate distance using correct wheel circumference formula
-		// wheel_size is diameter in inches, convert to circumference in meters
 		const wheelCircumferenceMeters = getWheelCircumference(row.wheel_size);
-		const correctedDistance = calculateDistance(row.total_rotations, wheelCircumferenceMeters);
-		const correctedAvgSpeed = row.duration > 0 ? (correctedDistance / row.duration) * 60 : 0;
+		const totalRotations = formattedBuckets.reduce((sum, bucket) => sum + bucket.rotations, 0);
+		const duration = formattedBuckets.length * 5;
+		const distance = calculateDistance(totalRotations, wheelCircumferenceMeters);
+		const avgSpeed = duration > 0 ? (distance / duration) * 60 : 0;
 
 		trips.push({
 			id: row.id,
@@ -210,11 +188,11 @@ async function loadTripsForSensor(sensorId: string): Promise<Trip[]> {
 				day: 'numeric'
 			}),
 			startTime: formatTime24h(new Date(startTimestamp)),
-			endTime: formatTime24h(new Date(startTimestamp + row.duration * 60 * 1000)),
-			distance: correctedDistance,
-			duration: row.duration,
-			avgSpeed: correctedAvgSpeed,
-			totalRotations: row.total_rotations,
+			endTime: formatTime24h(new Date(startTimestamp + duration * 60 * 1000)),
+			distance,
+			duration,
+			avgSpeed,
+			totalRotations,
 			buckets: formattedBuckets
 		});
 	}
@@ -256,18 +234,8 @@ export async function saveSensorDescriptor(sensor: Sensor, wheelSize: string, tr
 		await run(`DELETE FROM buckets WHERE trip_id = ?;`, [trip.id]);
 		await run(`DELETE FROM trips WHERE id = ?;`, [trip.id]);
 		await run(
-			`INSERT INTO trips (id, sensor_id, start_date, wheel_size, distance, duration, avg_speed, total_rotations)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
-			[
-				trip.id,
-				sensor.id,
-				startTimestamp,
-				wheelSize,
-				trip.distance,
-				trip.duration,
-				trip.avgSpeed,
-				trip.totalRotations
-			]
+			`INSERT INTO trips (id, sensor_id, start_date, wheel_size) VALUES (?, ?, ?, ?);`,
+			[trip.id, sensor.id, startTimestamp, wheelSize]
 		);
 		for (let i = 0; i < trip.buckets.length; i++) {
 			const bucket = trip.buckets[i];
@@ -313,7 +281,7 @@ export async function getAllSensors(): Promise<Array<Sensor & { lastSeen?: numbe
 		id: row.id,
 		name: row.name,
 		signalStrength: row.strength,
-		lastSeen: normalizePersistedTimestamp(row.last_seen)
+		lastSeen: unixSecondsToMilliseconds(row.last_seen)
 	}));
 }
 

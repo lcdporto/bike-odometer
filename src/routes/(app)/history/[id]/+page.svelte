@@ -14,12 +14,6 @@
 	}
 
 	$effect(() => {
-		if (!sensorState.isConnected) {
-			goto(resolve('/pairing'));
-		}
-	});
-
-	$effect(() => {
 		if (!trip && tripsState.count > 0) {
 			goto(resolve('/history'));
 		}

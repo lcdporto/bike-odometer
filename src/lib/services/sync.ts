@@ -28,10 +28,6 @@ function toSyncRecords(sensorId: string, wheelSize: string, syncedAt: number, tr
 			sensorId,
 			startDate,
 			wheelSize,
-			distance: trip.distance,
-			duration: trip.duration,
-			avgSpeed: trip.avgSpeed,
-			totalRotations: trip.totalRotations,
 			updatedAt: syncedAt,
 			deletedAt: null
 		});

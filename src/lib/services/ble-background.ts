@@ -1,4 +1,5 @@
 import { initializeBLE, scanForESP32Sensors, downloadTrips, readWheelSizeDescriptor } from './ble';
+import { tripFromSensorDescriptor, type SensorTripDescriptor } from '$lib/domain/trips';
 import { saveSensorDescriptor } from '$lib/persistence/sqlite';
 import { syncSensorSnapshot } from '$lib/services/sync';
 import { applySensorWithTrips } from '$lib/state/app-state';
@@ -6,11 +7,10 @@ import type { Sensor } from '$lib/stores/sensor.svelte';
 import { sensorState } from '$lib/stores/sensor.svelte';
 import type { BleDevice } from '@capacitor-community/bluetooth-le';
 import { bleDevicesState } from '$lib/stores/ble-devices.svelte';
-import { formatTime24h, getWheelCircumference, calculateDistance } from '$lib/utils';
+import { getWheelCircumference } from '$lib/utils';
 
 const SCAN_INTERVAL = 10000; // 10 seconds between scans
 const SCAN_DURATION = 5000; // 5 seconds per scan
-const FIVE_MINUTES_MS = 5 * 60 * 1000;
 
 // Convert RSSI (signal strength in dBm, typically -100 to -30) to percentage
 function rssiToPercentage(rssi: number): number {
@@ -21,20 +21,7 @@ function rssiToPercentage(rssi: number): number {
 }
 
 type SensorDescriptor = {
-	trips: Array<{
-		/**
-		 * Trip ID
-		 */
-		id: number;
-		/**
-		 * Start date in seconds since 1970 epoch
-		 */
-		startDate: number;
-		/**
-		 * Number of rotations in 5 minute buckets
-		 */
-		buckets: number[];
-	}>;
+	trips: SensorTripDescriptor[];
 };
 
 let isScanning = false;
@@ -42,46 +29,10 @@ let scanInterval: number | null = null;
 const discoveredDevices = new Set<string>();
 
 function normalizeWheelSizeValue(wheelSize: string): string {
-	if (wheelSize.endsWith(".00")) {
-		return wheelSize.slice(0, -3).trim();
-	}
-	return wheelSize.trim() || '26';
-}
+	const trimmed = wheelSize.trim();
+	const parsed = Number.parseFloat(trimmed);
 
-function toRotationBucket(trip: SensorDescriptor['trips'][0], idx: number) {
-	const tripStartTimestamp = trip.startDate * 1000;
-	const timestamp = tripStartTimestamp + idx * FIVE_MINUTES_MS;
-	return {
-		time: formatTime24h(new Date(timestamp)),
-		rotations: trip.buckets[idx] || 0,
-		timestamp
-	};
-}
-
-function toTrip(trip: SensorDescriptor['trips'][0], wheelCircumference: number) {
-	const buckets = trip.buckets.map((_, idx) => toRotationBucket(trip, idx));
-	const totalRotations = buckets.reduce((sum, b) => sum + b.rotations, 0);
-	const distance = calculateDistance(totalRotations, wheelCircumference);
-	const duration = buckets.length * 5;
-	const avgSpeed = duration > 0 ? (distance / duration) * 60 : 0;
-	const startDate = new Date(trip.startDate * 1000);
-	const endDate = new Date(startDate.getTime() + duration * 60 * 1000);
-
-	return {
-		id: `trip-${trip.id}`,
-		date: startDate.toLocaleDateString('en-US', {
-			weekday: 'short',
-			month: 'short',
-			day: 'numeric'
-		}),
-		startTime: formatTime24h(startDate),
-		endTime: formatTime24h(endDate),
-		distance,
-		duration,
-		avgSpeed,
-		totalRotations,
-		buckets
-	};
+	return Number.isFinite(parsed) ? parsed.toString() : '26';
 }
 
 /**
@@ -106,7 +57,7 @@ async function processSensor(deviceId: string, deviceName: string, strength: num
 			signalStrength: strength
 		};
 		
-		const trips = descriptor.trips.map((trip) => toTrip(trip, wheelCircumference));
+		const trips = descriptor.trips.map((trip) => tripFromSensorDescriptor(trip, wheelCircumference));
 		
 		// Save to database
 		await saveSensorDescriptor(sensor, wheelSize, trips);

@@ -3,6 +3,8 @@ import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import type { SyncBucketRecord, SyncSensorRecord, SyncTripRecord } from '$lib/types/sync';
 
+const BUCKET_MINUTES = 5;
+
 const dbPath = resolve(process.cwd(), 'data', 'sync.db');
 mkdirSync(dirname(dbPath), { recursive: true });
 
@@ -25,10 +27,6 @@ CREATE TABLE IF NOT EXISTS trips (
 	sensor_id TEXT NOT NULL,
 	start_date INTEGER NOT NULL,
 	wheel_size TEXT NOT NULL,
-	distance REAL NOT NULL,
-	duration INTEGER NOT NULL,
-	avg_speed REAL NOT NULL,
-	total_rotations INTEGER NOT NULL,
 	updated_at INTEGER NOT NULL,
 	deleted_at INTEGER,
 	FOREIGN KEY(sensor_id) REFERENCES sensors(id)
@@ -65,19 +63,15 @@ WHERE excluded.updated_at >= sensors.updated_at;
 
 const upsertTripStmt = db.query(`
 INSERT INTO trips (
-	id, sensor_id, start_date, wheel_size, distance, duration, avg_speed, total_rotations, updated_at, deleted_at
+	id, sensor_id, start_date, wheel_size, updated_at, deleted_at
 )
 VALUES (
-	?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+	?, ?, ?, ?, ?, ?
 )
 ON CONFLICT(id) DO UPDATE SET
 	sensor_id = excluded.sensor_id,
 	start_date = excluded.start_date,
 	wheel_size = excluded.wheel_size,
-	distance = excluded.distance,
-	duration = excluded.duration,
-	avg_speed = excluded.avg_speed,
-	total_rotations = excluded.total_rotations,
 	updated_at = excluded.updated_at,
 	deleted_at = excluded.deleted_at
 WHERE excluded.updated_at >= trips.updated_at;
@@ -101,7 +95,7 @@ WHERE id = ?;
 `);
 
 const selectTripsStmt = db.query(`
-SELECT id, sensor_id, start_date, wheel_size, distance, duration, avg_speed, total_rotations, updated_at, deleted_at
+SELECT id, sensor_id, start_date, wheel_size, updated_at, deleted_at
 FROM trips
 WHERE sensor_id = ? AND updated_at > ?;
 `);
@@ -129,10 +123,6 @@ const transactPush = db.transaction((sensor: SyncSensorRecord, trips: SyncTripRe
 			trip.sensorId,
 			trip.startDate,
 			trip.wheelSize,
-			trip.distance,
-			trip.duration,
-			trip.avgSpeed,
-			trip.totalRotations,
 			trip.updatedAt,
 			trip.deletedAt
 		);
@@ -171,10 +161,6 @@ export function pullSyncData(sensorId: string, since: number) {
 		sensor_id: string;
 		start_date: number;
 		wheel_size: string;
-		distance: number;
-		duration: number;
-		avg_speed: number;
-		total_rotations: number;
 		updated_at: number;
 		deleted_at: number | null;
 	}>;
@@ -204,10 +190,6 @@ export function pullSyncData(sensorId: string, since: number) {
 		sensorId: trip.sensor_id,
 		startDate: trip.start_date,
 		wheelSize: trip.wheel_size,
-		distance: trip.distance,
-		duration: trip.duration,
-		avgSpeed: trip.avg_speed,
-		totalRotations: trip.total_rotations,
 		updatedAt: trip.updated_at,
 		deletedAt: trip.deleted_at
 	}));
@@ -251,6 +233,24 @@ export interface DashboardSensor {
 	trips: DashboardTrip[];
 }
 
+function getWheelCircumference(wheelSize: string): number {
+	const diameterInches = Number.parseFloat(wheelSize);
+	return Number.isFinite(diameterInches) ? diameterInches * Math.PI * 0.0254 : 0;
+}
+
+function getTripStats(wheelSize: string, buckets: DashboardBucket[]) {
+	const totalRotations = buckets.reduce((sum, bucket) => sum + bucket.rotations, 0);
+	const duration = buckets.length * BUCKET_MINUTES;
+	const distance = (totalRotations * getWheelCircumference(wheelSize)) / 1000;
+
+	return {
+		distance,
+		duration,
+		avgSpeed: duration > 0 ? (distance / duration) * 60 : 0,
+		totalRotations
+	};
+}
+
 export function getDashboardData(): DashboardSensor[] {
 	const sensors = db
 		.query(
@@ -268,7 +268,7 @@ export function getDashboardData(): DashboardSensor[] {
 		}>;
 
 	const tripStmt = db.query(
-		`SELECT id, start_date, wheel_size, distance, duration, avg_speed, total_rotations, updated_at
+		`SELECT id, start_date, wheel_size, updated_at
 		 FROM trips
 		 WHERE sensor_id = ? AND deleted_at IS NULL
 		 ORDER BY start_date DESC;`
@@ -286,10 +286,6 @@ export function getDashboardData(): DashboardSensor[] {
 			id: string;
 			start_date: number;
 			wheel_size: string;
-			distance: number;
-			duration: number;
-			avg_speed: number;
-			total_rotations: number;
 			updated_at: number;
 		}>;
 
@@ -299,23 +295,25 @@ export function getDashboardData(): DashboardSensor[] {
 			wheelSize: sensor.wheel_size,
 			lastSeen: sensor.last_seen,
 			updatedAt: sensor.updated_at,
-			trips: trips.map((trip) => ({
-				id: trip.id,
-				startDate: trip.start_date,
-				wheelSize: trip.wheel_size,
-				distance: trip.distance,
-				duration: trip.duration,
-				avgSpeed: trip.avg_speed,
-				totalRotations: trip.total_rotations,
-				updatedAt: trip.updated_at,
-				buckets: (bucketStmt.all(trip.id) as Array<{ idx: number; rotations: number; timestamp: number }>).map(
-					(bucket) => ({
-						idx: bucket.idx,
-						rotations: bucket.rotations,
-						timestamp: bucket.timestamp
-					})
-				)
-			}))
+			trips: trips.map((trip) => {
+				const buckets = (
+					bucketStmt.all(trip.id) as Array<{ idx: number; rotations: number; timestamp: number }>
+				).map((bucket) => ({
+					idx: bucket.idx,
+					rotations: bucket.rotations,
+					timestamp: bucket.timestamp
+				}));
+				const stats = getTripStats(trip.wheel_size, buckets);
+
+				return {
+					id: trip.id,
+					startDate: trip.start_date,
+					wheelSize: trip.wheel_size,
+					...stats,
+					updatedAt: trip.updated_at,
+					buckets
+				};
+			})
 		};
 	});
 }
