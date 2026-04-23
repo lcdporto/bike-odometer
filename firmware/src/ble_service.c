@@ -15,13 +15,15 @@
 #include <zephyr/bluetooth/uuid.h>
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/bluetooth/att.h>
+#include <zephyr/sys/util.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
 
-#define DEVICE_NAME             CONFIG_BT_DEVICE_NAME + "_" + MACRO_STRINGIFY(CONFIG_BT_DEVICE_NAME_MAC_SUFFIX)
-#define DEVICE_NAME_LEN         (sizeof(DEVICE_NAME) - 1)
+#define DEVICE_NAME             CONFIG_BT_DEVICE_NAME
+#define DEVICE_NAME_SUFFIX_LEN  5
+#define DEVICE_NAME_MAX_LEN     (sizeof(DEVICE_NAME) - 1 + DEVICE_NAME_SUFFIX_LEN)
 #define TRIPS_NOTIFY_STACK_SIZE 2048
 
 /* Advertising work */
@@ -30,6 +32,37 @@ static struct bt_conn *current_conn;
 static struct k_work_q trips_notify_work_q;
 static struct k_work trips_notify_work;
 K_THREAD_STACK_DEFINE(trips_notify_stack, TRIPS_NOTIFY_STACK_SIZE);
+static char device_name[DEVICE_NAME_MAX_LEN + 1];
+
+static void update_device_name(void)
+{
+	bt_addr_le_t addr;
+	size_t count = 1;
+	size_t base_len = sizeof(DEVICE_NAME) - 1;
+	int written;
+
+	memcpy(device_name, DEVICE_NAME, base_len);
+	device_name[base_len] = '\0';
+
+	bt_id_get(&addr, &count);
+	if (count == 0U) {
+		printk("BLE: Using base device name '%s' (no identity address)\n", device_name);
+		return;
+	}
+
+	written = snprintk(device_name, sizeof(device_name), "%s-%02X%02X",
+				 DEVICE_NAME,
+				 addr.a.val[1],
+				 addr.a.val[0]);
+	if (written < 0 || written >= (int)sizeof(device_name)) {
+		memcpy(device_name, DEVICE_NAME, base_len);
+		device_name[base_len] = '\0';
+		printk("BLE: Failed to append address suffix, using base name '%s'\n", device_name);
+		return;
+	}
+
+	printk("BLE: Advertising as '%s'\n", device_name);
+}
 
 /*
  * BLE read handler for pulse count
@@ -626,9 +659,9 @@ BT_GATT_SERVICE_DEFINE(bike_svc,
 );
 
 /* Advertising data */
-static const struct bt_data ad[] = {
+static struct bt_data ad[] = {
 	BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
-	BT_DATA(BT_DATA_NAME_COMPLETE, DEVICE_NAME, DEVICE_NAME_LEN),
+	BT_DATA(BT_DATA_NAME_COMPLETE, device_name, 0),
 };
 
 static const struct bt_data sd[] = {
@@ -707,6 +740,8 @@ int ble_service_init(void)
 	}
 
 	printk("Bluetooth initialized\n");
+	update_device_name();
+	ad[1].data_len = strlen(device_name);
 
 	k_work_init(&adv_work, adv_work_handler);
 	k_work_init(&trips_notify_work, trips_notify_work_handler);
