@@ -27,6 +27,7 @@ type SensorDescriptor = {
 let isScanning = false;
 let scanInterval: number | null = null;
 const discoveredDevices = new Set<string>();
+const processingDevices = new Map<string, Promise<boolean>>();
 
 function normalizeWheelSizeValue(wheelSize: string): string {
 	const trimmed = wheelSize.trim();
@@ -39,44 +40,55 @@ function normalizeWheelSizeValue(wheelSize: string): string {
  * Process a discovered sensor by reading its data and saving to DB
  */
 async function processSensor(deviceId: string, deviceName: string, strength: number, device: BleDevice) {
-	try {
-		console.log(`Processing sensor: ${deviceName} (${deviceId})`);
-		
-		// Download trips from device using chunked NOTIFY protocol
-		const descriptor = await downloadTrips<SensorDescriptor>(device);
-		console.log('Sensor descriptor received:', descriptor);
-		const wheelSize = normalizeWheelSizeValue(await readWheelSizeDescriptor(device.deviceId));
-		console.log('Wheel size descriptor received:', wheelSize);
-		
-		// Convert to app format
-		const wheelCircumference = getWheelCircumference(wheelSize);
-		
-		const sensor: Sensor = {
-			id: deviceId,
-			name: deviceName,
-			signalStrength: strength
-		};
-		
-		const trips = descriptor.trips.map((trip) => tripFromSensorDescriptor(trip, wheelCircumference));
-		
-		// Save to database
-		await saveSensorDescriptor(sensor, wheelSize, trips);
-		console.log(`Sensor ${deviceName} data saved to DB`);
+	console.log(`Processing sensor: ${deviceName} (${deviceId})`);
 
-		if (sensorState.connectedSensor?.id === sensor.id) {
-			applySensorWithTrips({ sensor, wheelSize, trips }, sensorState.connectedSensor);
-		}
+	const descriptor = await downloadTrips<SensorDescriptor>(device);
+	console.log('Sensor descriptor received:', descriptor);
+	const wheelSize = normalizeWheelSizeValue(await readWheelSizeDescriptor(device.deviceId));
+	console.log('Wheel size descriptor received:', wheelSize);
 
-		// Sync latest snapshot to backend
-		syncSensorSnapshot(sensor.id).catch((error) => {
-			console.error(`Failed to sync sensor ${deviceName}:`, error);
-		});
-		
-		// Mark as discovered so we don't process it again
-		discoveredDevices.add(deviceId);
-	} catch (error) {
-		console.error(`Failed to process sensor ${deviceName}:`, error);
+	const wheelCircumference = getWheelCircumference(wheelSize);
+	const sensor: Sensor = {
+		id: deviceId,
+		name: deviceName,
+		signalStrength: strength
+	};
+	const trips = descriptor.trips.map((trip) => tripFromSensorDescriptor(trip, wheelCircumference));
+
+	await saveSensorDescriptor(sensor, wheelSize, trips);
+	console.log(`Sensor ${deviceName} data saved to DB`);
+
+	if (sensorState.connectedSensor?.id === sensor.id) {
+		applySensorWithTrips({ sensor, wheelSize, trips }, sensorState.connectedSensor);
 	}
+
+	syncSensorSnapshot(sensor.id).catch((error) => {
+		console.error(`Failed to sync sensor ${deviceName}:`, error);
+	});
+
+	discoveredDevices.add(deviceId);
+}
+
+function queueSensorProcessing(deviceId: string, deviceName: string, strength: number, device: BleDevice) {
+	const existing = processingDevices.get(deviceId);
+	if (existing) return existing;
+
+	const processing = processSensor(deviceId, deviceName, strength, device)
+		.then(() => true)
+		.catch((error) => {
+			console.error(`Failed to process sensor ${deviceName}:`, error);
+			return false;
+		})
+		.finally(() => {
+			processingDevices.delete(deviceId);
+		});
+
+	processingDevices.set(deviceId, processing);
+	return processing;
+}
+
+export function waitForSensorData(deviceId: string): Promise<boolean> {
+	return processingDevices.get(deviceId) ?? Promise.resolve(discoveredDevices.has(deviceId));
 }
 
 /**
@@ -98,12 +110,9 @@ async function performScan() {
 		
 		// Process new sensors
 		for (const sensor of sensors) {
-			if (!discoveredDevices.has(sensor.macAddress)) {
+			if (!discoveredDevices.has(sensor.macAddress) && !processingDevices.has(sensor.macAddress)) {
 				console.log(`New sensor discovered: ${sensor.name}`);
-				// Process in background, don't wait
-				processSensor(sensor.macAddress, sensor.name, sensor.strength, sensor.device).catch((err) => {
-					console.error('Failed to process sensor:', err);
-				});
+				queueSensorProcessing(sensor.macAddress, sensor.name, sensor.strength, sensor.device);
 			}
 			
 			// Update connected device in store

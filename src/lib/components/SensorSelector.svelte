@@ -2,6 +2,7 @@
 	import type { Sensor } from '$lib/stores/sensor.svelte';
 	import { Bluetooth, BluetoothSearching, Loader2, Signal, SignalLow, SignalMedium, Clock } from '@lucide/svelte';
 	import { getAllSensors } from '$lib/persistence/sqlite';
+	import { waitForSensorData } from '$lib/services/ble-background';
 	import { loadAndApplySensorData } from '$lib/state/app-state';
 	import { bleDevicesState } from '$lib/stores/ble-devices.svelte';
 	import { resolveDisplaySensorName } from '$lib/utils';
@@ -63,7 +64,11 @@
 		errorMessage = null;
 		
 		try {
-			const sensorData = await loadAndApplySensorData(sensor);
+			const sensorData = await loadAndApplySensorData(sensor).catch(async (error) => {
+				const didFinishLoading = await waitForSensorData(sensor.id);
+				if (!didFinishLoading) throw error;
+				return loadAndApplySensorData(sensor);
+			});
 			
 			console.log('Loaded sensor data:', {
 				sensorId: sensor.id,
