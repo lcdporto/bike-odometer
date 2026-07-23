@@ -40,45 +40,14 @@ function normalizeWheelSizeValue(wheelSize: string): string {
  * Process a discovered sensor by reading its data and saving to DB
  */
 async function processSensor(deviceId: string, deviceName: string, strength: number, device: BleDevice) {
-<<<<<<< HEAD
 	console.log(`Processing sensor: ${deviceName} (${deviceId})`);
 
 	const descriptor = await downloadTrips<SensorDescriptor>(device);
 	console.log('Sensor descriptor received:', descriptor);
 	const wheelSize = normalizeWheelSizeValue(await readWheelSizeDescriptor(device.deviceId));
 	console.log('Wheel size descriptor received:', wheelSize);
-=======
-	try {
-		console.log(`Processing sensor: ${deviceName} (${deviceId})`);
-		
-		// Download trips from device using chunked NOTIFY protocol
-		const descriptor = await downloadTrips<SensorDescriptor>(device);
-		console.log('Sensor descriptor received:', descriptor);
-		const wheelSize = normalizeWheelSizeValue(await readWheelSizeDescriptor(device.deviceId));
-		console.log('Wheel size descriptor received:', wheelSize);
-		const battery = await readBatteryInfo(device.deviceId);
-		console.log('Battery info received:', battery);
-		
-		// Convert to app format
-		const wheelCircumference = getWheelCircumference(wheelSize);
-		
-		const sensor: Sensor = {
-			id: deviceId,
-			name: deviceName,
-			signalStrength: strength
-		};
-		
-		const trips = descriptor.trips.map((trip) => tripFromSensorDescriptor(trip, wheelCircumference));
-		
-		// Save to database
-		await saveSensorDescriptor(sensor, wheelSize, trips);
-		console.log(`Sensor ${deviceName} data saved to DB`);
-
-		if (sensorState.connectedSensor?.id === sensor.id) {
-			applySensorWithTrips({ sensor, wheelSize, trips }, sensorState.connectedSensor);
-		}
-		sensorState.setBatteryInfo(battery);
->>>>>>> d460ebd (Add battery level information)
+	const battery = await readBatteryInfo(device.deviceId);
+	console.log('Battery info received:', battery);
 
 	const wheelCircumference = getWheelCircumference(wheelSize);
 	const sensor: Sensor = {
@@ -94,6 +63,7 @@ async function processSensor(deviceId: string, deviceName: string, strength: num
 	if (sensorState.connectedSensor?.id === sensor.id) {
 		applySensorWithTrips({ sensor, wheelSize, trips }, sensorState.connectedSensor);
 	}
+	sensorState.setBatteryInfo(battery);
 
 	syncSensorSnapshot(sensor.id).catch((error) => {
 		console.error(`Failed to sync sensor ${deviceName}:`, error);
