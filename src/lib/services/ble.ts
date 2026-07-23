@@ -210,6 +210,27 @@ export async function readWheelSizeDescriptor(deviceId: string): Promise<string>
 	return wheelSize;
 }
 
+export interface BatteryInfo {
+	millivolts: number;
+	percent: number;
+}
+
+export async function readBatteryInfo(deviceId: string): Promise<BatteryInfo> {
+	const value = await readStringCharacteristic(deviceId, BATTERY_UUID, 'battery info');
+	const payload = JSON.parse(value) as { mv?: unknown; pct?: unknown };
+	const millivolts = Number(payload.mv);
+	const percent = Number(payload.pct);
+
+	if (!Number.isFinite(millivolts) || !Number.isFinite(percent)) {
+		throw new Error(`Invalid battery info from device ${deviceId}: ${value}`);
+	}
+
+	return {
+		millivolts: Math.round(millivolts),
+		percent: Math.max(0, Math.min(100, Math.round(percent)))
+	};
+}
+
 export async function writeWheelSizeDescriptor(deviceId: string, wheelSizeInches: string): Promise<void> {
 	await writeStringCharacteristic(
 		deviceId,

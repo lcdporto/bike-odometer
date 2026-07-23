@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Bike, Bluetooth, BarChart3, History } from '@lucide/svelte';
+	import { Bike, Bluetooth, BarChart3, Battery, History } from '@lucide/svelte';
 	import { Select, SelectContent, SelectItem, SelectTrigger } from '$lib/components/ui/select';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -98,16 +98,23 @@
 			</div>
 		</div>
 
-		<Select type="single" value={wheelSize} onValueChange={handleWheelSizeChange}>
-			<SelectTrigger class="w-[100px] bg-card text-sm">
-				{WHEEL_SIZES.find((s) => s.value === wheelSize)?.label || 'Wheel'}
-			</SelectTrigger>
-			<SelectContent>
-				{#each WHEEL_SIZES as size (size.value)}
-					<SelectItem value={size.value}>{size.label}</SelectItem>
-				{/each}
-			</SelectContent>
-		</Select>
+		<div class="flex items-center gap-2">
+			{#if sensorState.batteryPercent !== null}
+				<Battery class="h-4 w-4" />
+				<span class="font-medium">{sensorState.batteryPercent}%</span>
+				<span class="text-muted-foreground">{(sensorState.batteryMillivolts! / 1000).toFixed(2)} V</span>
+			{/if}
+			<Select type="single" value={wheelSize} onValueChange={handleWheelSizeChange}>
+				<SelectTrigger class="w-[92px] bg-card text-sm">
+					{WHEEL_SIZES.find((s) => s.value === wheelSize)?.label || 'Wheel'}
+				</SelectTrigger>
+				<SelectContent>
+					{#each WHEEL_SIZES as size (size.value)}
+						<SelectItem value={size.value}>{size.label}</SelectItem>
+					{/each}
+				</SelectContent>
+			</Select>
+		</div>
 	</header>
 
 	<main class="flex-1 overflow-hidden p-4">

@@ -17,6 +17,8 @@ class SensorStore {
 	isConnected = $state(false);
 	connectedSensor = $state<Sensor | null>(null);
 	wheelSize = $state(DEFAULT_WHEEL_SIZE);
+	batteryPercent = $state<number | null>(null);
+	batteryMillivolts = $state<number | null>(null);
 
 	// Derived values
 	wheelCircumference = $derived(
@@ -33,10 +35,17 @@ class SensorStore {
 		this.isConnected = false;
 		this.connectedSensor = null;
 		this.wheelSize = DEFAULT_WHEEL_SIZE;
+		this.batteryPercent = null;
+		this.batteryMillivolts = null;
 	}
 
 	setWheelSize(size: string) {
 		this.wheelSize = size;
+	}
+
+	setBatteryInfo(info: { percent: number; millivolts: number }) {
+		this.batteryPercent = info.percent;
+		this.batteryMillivolts = info.millivolts;
 	}
 }
 
