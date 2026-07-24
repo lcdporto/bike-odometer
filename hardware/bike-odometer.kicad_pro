@@ -3,6 +3,8 @@
     "3dviewports": [],
     "design_settings": {
       "defaults": {
+        "apply_defaults_to_fp_barcodes": false,
+        "apply_defaults_to_fp_dimensions": false,
         "apply_defaults_to_fp_fields": false,
         "apply_defaults_to_fp_shapes": false,
         "apply_defaults_to_fp_text": false,
@@ -48,7 +50,23 @@
         "silk_text_thickness": 0.1,
         "silk_text_upright": false,
         "zones": {
-          "min_clearance": 0.25
+          "border_display_style": 2,
+          "border_hatch_pitch": 0.5,
+          "corner_radius": 0.0,
+          "corner_smoothing": 0,
+          "fill_mode": 0,
+          "hatch_gap": 1.5,
+          "hatch_orientation": 0.0,
+          "hatch_smoothing_level": 0,
+          "hatch_smoothing_value": 0.1,
+          "hatch_thickness": 1.0,
+          "min_clearance": 0.25,
+          "min_island_area": 10.0,
+          "min_thickness": 0.25,
+          "pad_connection": 1,
+          "remove_islands": 0,
+          "thermal_relief_gap": 0.5,
+          "thermal_relief_spoke_width": 0.5
         }
       },
       "diff_pair_dimensions": [
@@ -58,56 +76,7 @@
           "width": 0.0
         }
       ],
-      "drc_exclusions": [
-        [
-          "courtyards_overlap|152145000|94675000|b211f4be-9d8b-4e16-94ae-e0ab82d682e8|f830fefe-abae-436e-bdf7-30f630b05d7e",
-          ""
-        ],
-        [
-          "courtyards_overlap|152455000|94675000|59d292ab-5931-49c6-a2b7-f78e6b0ec177|b211f4be-9d8b-4e16-94ae-e0ab82d682e8",
-          ""
-        ],
-        [
-          "courtyards_overlap|152940000|91804999|1995eaec-dca7-4e17-907b-ac9a007fc689|3703ab5f-b251-4703-bb6c-b05936c5c0f9",
-          ""
-        ],
-        [
-          "courtyards_overlap|155685000|86559999|2461d800-732e-49e7-9673-a9f1bc627fc2|c91c751b-243a-42a5-9058-b0ad5bf13792",
-          ""
-        ],
-        [
-          "courtyards_overlap|156050562|95068139|4579bb1b-4920-4f9c-a44e-969a804cb18a|d5e75e9b-ec69-46d9-8db2-f39d75f907ed",
-          ""
-        ],
-        [
-          "courtyards_overlap|156202383|86559999|2461d800-732e-49e7-9673-a9f1bc627fc2|6757f6e3-b5a5-401c-86fd-868d239967b4",
-          ""
-        ],
-        [
-          "courtyards_overlap|156235000|85284296|6757f6e3-b5a5-401c-86fd-868d239967b4|84176753-6aba-4c02-b3ac-32fc56e02f4d",
-          ""
-        ],
-        [
-          "courtyards_overlap|156255000|83460963|b88f2bb3-0067-486c-adb7-2fec38c7000b|fed6070e-3041-49fa-9f10-4245cb8c4fc7",
-          ""
-        ],
-        [
-          "courtyards_overlap|156257482|86559999|2461d800-732e-49e7-9673-a9f1bc627fc2|4c693aa5-e6d8-44b5-ada3-c6e577db5a22",
-          ""
-        ],
-        [
-          "courtyards_overlap|156891543|84729408|84176753-6aba-4c02-b3ac-32fc56e02f4d|fed6070e-3041-49fa-9f10-4245cb8c4fc7",
-          ""
-        ],
-        [
-          "courtyards_overlap|156892383|86555000|4c693aa5-e6d8-44b5-ada3-c6e577db5a22|6757f6e3-b5a5-401c-86fd-868d239967b4",
-          ""
-        ],
-        [
-          "courtyards_overlap|156915562|87305095|1ad8942a-43fb-4057-a7a2-ee1678d4c1c2|4c693aa5-e6d8-44b5-ada3-c6e577db5a22",
-          ""
-        ]
-      ],
+      "drc_exclusions": [],
       "meta": {
         "version": 2
       },
@@ -126,6 +95,7 @@
         "extra_footprint": "warning",
         "footprint": "error",
         "footprint_filters_mismatch": "ignore",
+        "footprint_symbol_field_mismatch": "warning",
         "footprint_symbol_mismatch": "warning",
         "footprint_type_mismatch": "ignore",
         "hole_clearance": "error",
@@ -143,6 +113,7 @@
         "mirrored_text_on_front_layer": "warning",
         "missing_courtyard": "ignore",
         "missing_footprint": "warning",
+        "missing_tuning_profile": "warning",
         "net_conflict": "warning",
         "nonmirrored_text_on_back_layer": "warning",
         "npth_inside_courtyard": "ignore",
@@ -162,9 +133,12 @@
         "too_many_vias": "error",
         "track_angle": "error",
         "track_dangling": "warning",
+        "track_not_centered_on_via": "ignore",
+        "track_on_post_machined_layer": "error",
         "track_segment_length": "error",
         "track_width": "error",
         "tracks_crossing": "error",
+        "tuning_profile_track_geometries": "ignore",
         "unconnected_items": "error",
         "unresolved_variable": "error",
         "via_dangling": "warning",
@@ -188,7 +162,7 @@
         "min_track_width": 0.0,
         "min_via_annular_width": 0.1,
         "min_via_diameter": 0.25,
-        "solder_mask_to_copper_clearance": 0.0,
+        "solder_mask_to_copper_clearance": 0.005,
         "use_height_for_length_calcs": true
       },
       "teardrop_options": [
@@ -277,17 +251,28 @@
       "zones_allow_external_fillets": false
     },
     "ipc2581": {
+      "bom_rev": "",
       "dist": "",
       "distpn": "",
       "internal_id": "",
       "mfg": "",
-      "mpn": ""
+      "mpn": "",
+      "sch_revision": ""
     },
     "layer_pairs": [],
     "layer_presets": [],
     "viewports": []
   },
   "boards": [],
+  "component_class_settings": {
+    "assignments": [],
+    "meta": {
+      "version": 0
+    },
+    "sheet_component_classes": {
+      "enabled": false
+    }
+  },
   "cvpcb": {
     "equivalence_files": []
   },
@@ -477,11 +462,14 @@
       "duplicate_sheet_names": "error",
       "endpoint_off_grid": "warning",
       "extra_units": "error",
+      "field_name_whitespace": "warning",
       "footprint_filter": "ignore",
       "footprint_link_issues": "warning",
       "four_way_junction": "ignore",
       "global_label_dangling": "warning",
+      "ground_pin_not_ground": "warning",
       "hier_label_mismatch": "error",
+      "isolated_pin_label": "warning",
       "label_dangling": "error",
       "label_multiple_wires": "warning",
       "lib_symbol_issues": "warning",
@@ -504,6 +492,7 @@
       "similar_power": "warning",
       "simulation_model_issue": "ignore",
       "single_global_label": "ignore",
+      "stacked_pin_name": "warning",
       "unannotated": "error",
       "unconnected_wire_endpoint": "warning",
       "undefined_netclass": "error",
@@ -536,6 +525,7 @@
         "priority": 2147483647,
         "schematic_color": "rgba(0, 0, 0, 0.000)",
         "track_width": 0.1565,
+        "tuning_profile": "",
         "via_diameter": 0.35,
         "via_drill": 0.15,
         "wire_width": 6
@@ -547,12 +537,13 @@
         "priority": 0,
         "schematic_color": "rgba(0, 0, 0, 0.000)",
         "track_width": 0.25,
+        "tuning_profile": "",
         "via_diameter": 0.45,
         "via_drill": 0.2
       }
     ],
     "meta": {
-      "version": 4
+      "version": 5
     },
     "net_colors": null,
     "netclass_assignments": null,
@@ -579,6 +570,10 @@
   },
   "schematic": {
     "annotate_start_num": 0,
+    "annotation": {
+      "method": 0,
+      "sort_order": 0
+    },
     "bom_export_filename": "${PROJECTNAME}.csv",
     "bom_fmt_presets": [],
     "bom_fmt_settings": {
@@ -698,6 +693,7 @@
       "sort_asc": true,
       "sort_field": "Reference"
     },
+    "bus_aliases": {},
     "connection_grid_size": 50.0,
     "drawing": {
       "dashed_lines_dash_length_ratio": 12.0,
@@ -705,6 +701,7 @@
       "default_line_thickness": 6.0,
       "default_text_size": 50.0,
       "field_names": [],
+      "hop_over_size_choice": 0,
       "intersheets_ref_own_page": false,
       "intersheets_ref_prefix": "",
       "intersheets_ref_short": false,
@@ -728,6 +725,7 @@
     "net_format_name": "",
     "page_layout_descr_file": "",
     "plot_directory": "",
+    "reuse_designators": true,
     "space_save_all_events": true,
     "spice_current_sheet_as_root": false,
     "spice_external_command": "spice \"%I\"",
@@ -736,13 +734,28 @@
     "spice_save_all_dissipations": false,
     "spice_save_all_voltages": false,
     "subpart_first_id": 65,
-    "subpart_id_separator": 0
+    "subpart_id_separator": 0,
+    "top_level_sheets": [
+      {
+        "filename": "bike-odometer.kicad_sch",
+        "name": "bike-odometer",
+        "uuid": "6526618c-52e1-4317-8eae-3ec35af57f05"
+      }
+    ],
+    "used_designators": "",
+    "variants": []
   },
   "sheets": [
     [
       "6526618c-52e1-4317-8eae-3ec35af57f05",
-      "Root"
+      "bike-odometer"
     ]
   ],
-  "text_variables": {}
+  "text_variables": {},
+  "tuning_profiles": {
+    "meta": {
+      "version": 0
+    },
+    "tuning_profiles_impedance_geometric": []
+  }
 }
