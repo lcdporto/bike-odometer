@@ -1,0 +1,10 @@
+identifier: bike-odometer/nrf54l10/cpuapp
+name: Bike odometer (nRF54L10)
+vendor: LCD
+arch: arm
+toolchain:
+  - zephyr
+sysbuild: true
+ram: 192
+flash: 1012
+supported: []

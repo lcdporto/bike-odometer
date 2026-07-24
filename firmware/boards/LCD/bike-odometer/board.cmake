@@ -1,4 +1,4 @@
-if (CONFIG_SOC_NRF54L15_CPUAPP)
+if (CONFIG_SOC_NRF54L10_CPUAPP OR CONFIG_SOC_NRF54L15_CPUAPP)
   board_runner_args(jlink "--device=nRF54L15_M33" "--speed=4000")
 elseif (CONFIG_SOC_NRF54L15_CPUFLPR)
   board_runner_args(jlink "--device=nRF54L15_RV32" "--speed=4000")

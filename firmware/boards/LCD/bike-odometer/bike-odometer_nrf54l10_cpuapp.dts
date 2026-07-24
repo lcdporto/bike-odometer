@@ -1,5 +1,5 @@
 /dts-v1/;
-#include <nordic/nrf54l15_cpuapp.dtsi>
+#include <nordic/nrf54l10_cpuapp.dtsi>
 #include <zephyr/dt-bindings/adc/nrf-saadc.h>
 #include <zephyr/dt-bindings/adc/adc.h>
 #include <zephyr/dt-bindings/gpio/gpio.h>
@@ -7,7 +7,7 @@
 
 / {
 	model = "Bike odometer";
-	compatible = "LCD,bike-odometer-cpuapp";
+	compatible = "LCD,bike-odometer-nrf54l10-cpuapp";
 
 	chosen {
 		zephyr,code-partition = &slot0_partition;
@@ -91,4 +91,4 @@
 	};
 };
 
-#include <nordic/nrf54l15_partition.dtsi>
+#include <nordic/nrf54l10_partition.dtsi>

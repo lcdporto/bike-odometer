@@ -6,9 +6,10 @@
  * - Completed trips stored directly to NVM
  * - Trips read on-demand from NVM
  * 
- * Capacity with 1.5MB NVM:
- * - ~3000+ trips (8+ years at 1 trip/day)
- * - Full 5-min bucket detail for all trips
+ * Capacity with the shared nRF54L10/nRF54L15 storage layout:
+ * - Newest 3000 trips retained in a circular archive
+ * - Full 5-min bucket detail for retained trips
+ * - Stable, monotonically increasing public trip IDs
  */
 
 #ifndef ODOMETER_H
@@ -27,7 +28,7 @@
 
 /* Storage configuration - 5-min bins, 4h max sessions */
 #define BIN_INTERVAL_MINUTES  5     /* 5-min bins (client requirement) */
-#define MAX_TRIPS             3000  /* ~8 years at 1 trip/day, stored in NVM */
+#define MAX_TRIPS             3000  /* Newest ~8 years at 1 trip/day */
 #define BUCKETS_PER_TRIP      48    /* 48 bins * 5 min = 4 hours max per trip */
 
 /* Trip entry with full bucket detail (~204 bytes each) */

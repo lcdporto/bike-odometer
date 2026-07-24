@@ -1,0 +1,8 @@
+# nRF54L10 field-production layout.
+# The application has 256 KiB; the remaining 756 KiB of the nRF54L10's
+# 1012 KiB application RRAM is available for settings and trip storage.
+
+settings_storage:
+  address: 0x40000
+  size: 0xBD000
+  region: flash_primary

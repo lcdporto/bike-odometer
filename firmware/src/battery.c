@@ -4,12 +4,10 @@
  * Uses SAADC internal VDD channel to measure supply voltage.
  * CR2032 discharge curve (approximation):
  *   3.0V = 100% (fresh)
- *   2.9V = 90%
- *   2.8V = 70%
- *   2.7V = 50%
- *   2.5V = 20%
- *   2.4V = 10%
- *   2.0V = 0% (cutoff)
+ *   2.9V = 80%
+ *   2.8V = 40%
+ *   2.75V = 20%
+ *   2.7V = 0% (observed reliable product cutoff)
  */
 
 #include "battery.h"
@@ -26,9 +24,8 @@
 #define ADC_RESOLUTION 12
 
 /*
- * Voltage calculation for VDD with gain 1/6 and 0.6V internal reference:
- * - ADC full scale = 0.6V * 6 (reciprocal of 1/6 gain) = 3.6V at input
- * - Input is VDD, so VDD (mV) = raw * 3600 / 4095
+ * The nRF54L internal reference is 0.9 V. With 1/4 channel gain the VDD
+ * input range is 3.6 V, so VDD (mV) = raw * 3600 / 4095.
  */
 #define ADC_FULL_SCALE_MV 3600
 
@@ -63,7 +60,11 @@ static uint16_t adc_raw_to_mv(int16_t raw)
 
 /*
  * Map CR2032 voltage to battery percentage
- * Based on typical CR2032 discharge curve under light load
+ * This is usable product capacity, not the CR2032's remaining chemical
+ * capacity. Although the nRF54L can operate down to 1.7 V, an aged CR2032
+ * develops enough internal resistance that BLE/RRAM current pulses can cause
+ * brownouts while its resting voltage is still much higher. Hardware testing
+ * found 2.70 V to be the reliable cutoff for this board.
  */
 static uint8_t voltage_to_percent(uint16_t mv)
 {
@@ -73,13 +74,10 @@ static uint8_t voltage_to_percent(uint16_t mv)
 		uint8_t percent;
 	} curve[] = {
 		{ 3000, 100 },
-		{ 2900,  90 },
-		{ 2800,  70 },
-		{ 2700,  50 },
-		{ 2600,  30 },
-		{ 2500,  20 },
-		{ 2400,  10 },
-		{ 2000,   0 },
+		{ 2900,  80 },
+		{ 2800,  40 },
+		{ 2750,  20 },
+		{ 2700,   0 },
 	};
 
 	/* Above max */

@@ -14,6 +14,8 @@
 #include "ble_service.h"
 #include "rtc.h"
 
+#define BOOT_ADVERTISING_SECONDS 60U
+
 int main(void)
 {
 	int err;
@@ -57,8 +59,8 @@ int main(void)
 		/* Continue - BLE will still work */
 	}
 
-	/* Start advertising */
-	ble_service_start_advertising();
+	/* Allow setup/sync after boot, then leave the radio idle. */
+	ble_service_start_advertising_for(BOOT_ADVERTISING_SECONDS);
 
 	/* Main loop */
 	for (;;) {

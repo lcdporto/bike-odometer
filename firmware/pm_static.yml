@@ -1,5 +1,5 @@
-# nRF54L15 flash: 0x165000 (1428KB)
-# App uses ~170KB. Maximize storage partition for trip data.
+# nRF54L15 application RRAM: 0x165000 (1428 KiB).
+# The application has 256 KiB; use the remainder for settings and trips.
 
 settings_storage:
   address: 0x40000

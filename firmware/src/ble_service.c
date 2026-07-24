@@ -8,6 +8,7 @@
 #include "rtc.h"
 
 #include <zephyr/kernel.h>
+#include <zephyr/sys/atomic.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/hci.h>
@@ -28,11 +29,17 @@
 
 /* Advertising work */
 static struct k_work adv_work;
+static struct k_work adv_stop_work;
+static struct k_work_delayable adv_timeout_work;
 static struct bt_conn *current_conn;
+static atomic_t advertising;
+static atomic_t connected_state;
+static atomic_t requested_adv_seconds;
 static struct k_work_q trips_notify_work_q;
 static struct k_work trips_notify_work;
 K_THREAD_STACK_DEFINE(trips_notify_stack, TRIPS_NOTIFY_STACK_SIZE);
 static char device_name[DEVICE_NAME_MAX_LEN + 1];
+static const struct bt_gatt_attr *trips_value_attr;
 
 static void update_device_name(void)
 {
@@ -445,7 +452,12 @@ static void trips_notify_work_handler(struct k_work *work)
 	}
 
 	trips_stream.notify_params.uuid = &bike_trips_uuid.uuid;
-	trips_stream.notify_params.attr = NULL;
+	if (trips_value_attr == NULL) {
+		printk("BLE: Trips value attribute not set, cannot notify\n");
+		trips_stream_reset();
+		return;
+	}
+	trips_stream.notify_params.attr = trips_value_attr;
 	trips_stream.notify_params.data = trips_stream.notify_buf;
 	trips_stream.notify_params.len = (uint16_t)chunk_len;
 	trips_stream.notify_params.func = trips_notify_complete;
@@ -480,6 +492,10 @@ static ssize_t write_trips(struct bt_conn *conn,
 
 	ARG_UNUSED(attr);
 	ARG_UNUSED(flags);
+
+	if (trips_value_attr == NULL) {
+		trips_value_attr = attr;
+	}
 
 	if (offset != 0U) {
 		return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
@@ -672,7 +688,20 @@ static const struct bt_data sd[] = {
 
 static void adv_work_handler(struct k_work *work)
 {
-	int err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_2, ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
+	uint32_t duration_seconds = (uint32_t)atomic_get(&requested_adv_seconds);
+	int err;
+
+	/* A queued start can outlive the request that submitted it. */
+	if (duration_seconds == 0U || atomic_get(&connected_state)) {
+		return;
+	}
+
+	if (atomic_get(&advertising)) {
+		k_work_reschedule(&adv_timeout_work, K_SECONDS(duration_seconds));
+		return;
+	}
+
+	err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_2, ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
 
 	if (err) {
 		printk("Advertising with UUID failed (err %d), retrying without scan response\n", err);
@@ -684,7 +713,40 @@ static void adv_work_handler(struct k_work *work)
 		return;
 	}
 
-	printk("Advertising successfully started\n");
+	atomic_set(&advertising, 1);
+	k_work_reschedule(&adv_timeout_work, K_SECONDS(duration_seconds));
+	printk("Advertising started for %u seconds\n", duration_seconds);
+}
+
+static void adv_stop_work_handler(struct k_work *work)
+{
+	int err;
+
+	/* A movement edge may have opened a new advertising window after this
+	 * stop was queued. Never let that stale stop close the new window.
+	 */
+	if (atomic_get(&requested_adv_seconds) != 0) {
+		return;
+	}
+
+	if (!atomic_cas(&advertising, 1, 0)) {
+		return;
+	}
+
+	err = bt_le_adv_stop();
+	if (err) {
+		atomic_set(&advertising, 1);
+		printk("Advertising stop failed (err %d)\n", err);
+		return;
+	}
+
+	printk("Advertising stopped\n");
+}
+
+static void adv_timeout_work_handler(struct k_work *work)
+{
+	atomic_set(&requested_adv_seconds, 0);
+	k_work_submit(&adv_stop_work);
 }
 
 static void connected(struct bt_conn *conn, uint8_t err)
@@ -698,6 +760,10 @@ static void connected(struct bt_conn *conn, uint8_t err)
 		bt_conn_unref(current_conn);
 	}
 	current_conn = bt_conn_ref(conn);
+	atomic_set(&connected_state, 1);
+	atomic_set(&advertising, 0);
+	atomic_set(&requested_adv_seconds, 0);
+	k_work_cancel_delayable(&adv_timeout_work);
 
 	printk("Connected\n");
 }
@@ -711,6 +777,7 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 		bt_conn_unref(current_conn);
 		current_conn = NULL;
 	}
+	atomic_set(&connected_state, 0);
 
 	printk("Disconnected, reason 0x%02x %s\n", reason, bt_hci_err_to_str(reason));
 }
@@ -718,7 +785,6 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 static void recycled_cb(void)
 {
 	printk("Connection object available from previous conn. Disconnect is complete!\n");
-	ble_service_start_advertising();
 }
 
 BT_CONN_CB_DEFINE(conn_callbacks) = {
@@ -744,6 +810,8 @@ int ble_service_init(void)
 	ad[1].data_len = strlen(device_name);
 
 	k_work_init(&adv_work, adv_work_handler);
+	k_work_init(&adv_stop_work, adv_stop_work_handler);
+	k_work_init_delayable(&adv_timeout_work, adv_timeout_work_handler);
 	k_work_init(&trips_notify_work, trips_notify_work_handler);
 	k_work_queue_start(&trips_notify_work_q,
 			   trips_notify_stack,
@@ -755,7 +823,24 @@ int ble_service_init(void)
 	return 0;
 }
 
-void ble_service_start_advertising(void)
+void ble_service_start_advertising_for(uint32_t duration_seconds)
 {
+	if (duration_seconds == 0U) {
+		return;
+	}
+
+	atomic_set(&requested_adv_seconds, (atomic_val_t)duration_seconds);
 	k_work_submit(&adv_work);
+}
+
+void ble_service_stop_advertising(void)
+{
+	atomic_set(&requested_adv_seconds, 0);
+	k_work_cancel_delayable(&adv_timeout_work);
+	k_work_submit(&adv_stop_work);
+}
+
+bool ble_service_is_connected(void)
+{
+	return atomic_get(&connected_state) != 0;
 }

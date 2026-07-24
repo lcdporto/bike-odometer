@@ -5,10 +5,12 @@
  * - Only current (active) trip kept in RAM (~204 bytes)
  * - Completed trips stored directly to NVS
  * - Trips read from NVS on-demand
- * - Supports 3000+ trips (8+ years)
+ * - Retains the newest 3000 trips in a power-fail-safe circular archive
  */
 
 #include "odometer.h"
+#include "ble_service.h"
+#include "battery.h"
 #include "rtc.h"
 
 #include <zephyr/kernel.h>
@@ -17,6 +19,7 @@
 #include <zephyr/storage/flash_map.h>
 #include <zephyr/fs/nvs.h>
 #include <zephyr/settings/settings.h>
+#include <zephyr/sys/atomic.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/irq.h>
 #include <string.h>
@@ -40,11 +43,30 @@ static const struct gpio_dt_spec pulse_gpio = GPIO_DT_SPEC_GET(PULSE_NODE, gpios
 #define NVS_PARTITION_OFFSET	FIXED_PARTITION_OFFSET(NVS_PARTITION)
 #define NVS_PARTITION_SIZE	FIXED_PARTITION_SIZE(NVS_PARTITION)
 
-/* NVS IDs - trips use IDs 1000+ */
-#define NVS_ID_TRIP_COUNT    1
-#define NVS_ID_ACTIVE_FLAG   3
-#define NVS_ID_WHEEL_SIZE    8
-#define NVS_ID_TRIP_BASE     1000  /* Trip IDs: 1000, 1001, 1002, ... */
+/* NVS IDs. Archive slots use 1000..4000; logical trip IDs are stored in each
+ * record and are never reused when a physical slot is recycled.
+ */
+#define NVS_ID_ARCHIVE_METADATA   2
+#define NVS_ID_WHEEL_SIZE         8
+#define NVS_ID_ACTIVE_TRIP        10
+#define NVS_ID_TRIP_BASE          1000
+#define ARCHIVE_SLOT_COUNT        (MAX_TRIPS + 1U)
+#define ARCHIVE_MAGIC             0x424F444FU
+#define ARCHIVE_VERSION           1U
+#define FIRST_TRIP_ID             1000U
+
+struct archived_trip {
+	uint32_t trip_id;
+	struct trip_entry trip;
+};
+
+struct archive_metadata {
+	uint32_t magic;
+	uint32_t version;
+	uint32_t count;
+	uint32_t oldest_slot;
+	uint32_t next_trip_id;
+};
 
 static struct nvs_fs nvs;
 static bool nvs_ready;
@@ -54,13 +76,19 @@ static volatile uint32_t pulse_count;
 static struct gpio_callback pulse_cb_data;
 static struct k_timer bin_timer;
 static struct k_work save_work;
+static struct k_work movement_work;
+static atomic_t parked;
+static atomic_t movement_window_armed = ATOMIC_INIT(1);
 
 /* Current trip - only one trip in RAM at a time */
 static struct trip_entry current_trip;
 static bool in_active_trip;
-
-/* Trip count in NVS */
-static size_t nvm_trip_count;
+static uint32_t current_trip_id;
+static struct archive_metadata archive = {
+	.magic = ARCHIVE_MAGIC,
+	.version = ARCHIVE_VERSION,
+	.next_trip_id = FIRST_TRIP_ID,
+};
 
 /* Wheel size (hundredths of inches, e.g., 2600 = 26.00") */
 static uint32_t wheel_size_x100 = DEFAULT_WHEEL_SIZE_X100;
@@ -70,15 +98,18 @@ static uint32_t pending_pulses;
 static bool pending_save;
 
 #define ZERO_BINS_BEFORE_SLEEP 2
+#define MOVEMENT_ADVERTISING_SECONDS 60U
 static uint32_t consecutive_zero_bins;
 
 /* Forward declarations */
 static void pulse_gpio_callback(const struct device *dev, struct gpio_callback *cb, uint32_t pins);
 static void bin_timer_handler(struct k_timer *timer);
 static void save_work_handler(struct k_work *work);
+static void movement_work_handler(struct k_work *work);
 static void store_bin(uint32_t pulses);
-static void save_current_trip_to_nvs(bool completed);
-static void save_metadata_to_nvs(void);
+static int save_current_trip_to_nvs(bool completed);
+static int save_archive_metadata(const struct archive_metadata *metadata);
+static int read_archive_slot(uint32_t slot, struct archived_trip *record);
 static void enter_low_power_idle(void);
 static int nvs_init_storage(void);
 
@@ -93,6 +124,15 @@ static void pulse_gpio_callback(const struct device *dev, struct gpio_callback *
 	printk("DEBUG: pulse detected pins=0x%08x total=%u\n", pins, pulse_count);
 #endif
 	irq_unlock(key);
+
+	/* Open one BLE window on the first movement after boot or a quiet bin.
+	 * This is deliberately independent of parked: an active trip restored
+	 * from NVS, or movement resuming before the second zero bin, must still
+	 * be discoverable. Continued wheel pulses do not extend the window.
+	 */
+	if (atomic_cas(&movement_window_armed, 1, 0)) {
+		k_work_submit(&movement_work);
+	}
 }
 
 /*
@@ -117,29 +157,68 @@ static void bin_timer_handler(struct k_timer *timer)
  */
 static void enter_low_power_idle(void)
 {
+	unsigned int key;
+	bool movement_already_pending;
+
 	#ifdef DEBUG
 	printk("Entering low power idle... GRTC keeps running, P0.%02d will wake\n", pulse_gpio.pin);
 	#endif
 
-	/* Stop the bin timer to avoid periodic wakeups */
-	k_timer_stop(&bin_timer);
-
-	/* GPIO interrupt is still configured from init, so any pulse
-	 * will wake us up. The system will naturally enter idle sleep.
-	 * When a pulse arrives, the ISR fires and wakes main context.
+	/* Mark parked before stopping the timer. A Hall edge that arrives during
+	 * this transition will then queue movement_work on the same work queue,
+	 * after this handler has finished.
 	 */
+	key = irq_lock();
+	atomic_set(&parked, 1);
+	k_timer_stop(&bin_timer);
+	movement_already_pending = pulse_count != 0U;
+	if (movement_already_pending) {
+		atomic_set(&parked, 0);
+		atomic_set(&movement_window_armed, 0);
+	}
+	irq_unlock(key);
 
-	/* Wait for pulse - system enters automatic low-power idle */
-	while (pulse_count == 0) {
-		k_sleep(K_MSEC(100));
+	/* Close the transition race: a pulse may have arrived after the empty
+	 * bin was captured but before parked was set.
+	 */
+	if (movement_already_pending) {
+		k_work_submit(&movement_work);
+		return;
 	}
 
-	/* Woken by pulse! Restart the bin timer */
-	#ifdef DEBUG
-	printk("Woken from idle by pulse, resuming normal operation\n");
-	#endif
-	k_timer_start(&bin_timer, K_MINUTES(BIN_INTERVAL_MINUTES), K_MINUTES(BIN_INTERVAL_MINUTES));
+	/* Keep System ON so GRTC and k_uptime_get() continue advancing. With no
+	 * advertising and no periodic timer, Zephyr can remain in idle until the
+	 * Hall GPIO interrupt submits movement_work.
+	 */
+	if (!ble_service_is_connected()) {
+		ble_service_stop_advertising();
+	}
+}
+
+static void movement_work_handler(struct k_work *work)
+{
+	ARG_UNUSED(work);
+
 	consecutive_zero_bins = 0;
+	if (atomic_cas(&parked, 1, 0)) {
+		k_timer_start(&bin_timer,
+			      K_MINUTES(BIN_INTERVAL_MINUTES),
+			      K_MINUTES(BIN_INTERVAL_MINUTES));
+	}
+
+	/* Refresh the resting-voltage estimate after a parked interval. This
+	 * keeps the value read by the phone representative of the current ride,
+	 * rather than retaining the measurement taken at the previous boot.
+	 */
+	if (battery_measure() != 0) {
+		printk("Movement wake: battery measurement failed\n");
+	}
+
+	ble_service_start_advertising_for(MOVEMENT_ADVERTISING_SECONDS);
+
+#ifdef DEBUG
+	printk("Movement wake: binning resumed and BLE window opened\n");
+#endif
 }
 
 /*
@@ -168,12 +247,22 @@ static void store_bin(uint32_t pulses)
 
 	/* If no pulses, end the current trip */
 	if (pulses == 0) {
+		/* The next Hall edge represents movement resuming after quiet and
+		 * should open a fresh, bounded BLE synchronization window.
+		 */
+		atomic_set(&movement_window_armed, 1);
+
 		if (in_active_trip) {
 #ifdef DEBUG
-			printk("Trip ended (no pulses), saving to NVS slot %zu\n", nvm_trip_count);
+			printk("Trip ended (no pulses), saving trip %u\n", current_trip_id);
 #endif
-			save_current_trip_to_nvs(true);  /* completed=true */
-			in_active_trip = false;
+			if (save_current_trip_to_nvs(true) == 0) {
+				in_active_trip = false;
+				current_trip_id = 0;
+			} else {
+				printk("NVS: Trip %u retained in RAM after save failure\n",
+				       current_trip_id);
+			}
 		}
 
 		consecutive_zero_bins++;
@@ -181,7 +270,9 @@ static void store_bin(uint32_t pulses)
 		printk("Zero bins: %u/%d before sleep\n", consecutive_zero_bins, ZERO_BINS_BEFORE_SLEEP);
 #endif
 
-		if (consecutive_zero_bins >= ZERO_BINS_BEFORE_SLEEP) {
+		/* Keep retrying if the completed trip is still only in RAM. */
+		if (consecutive_zero_bins >= ZERO_BINS_BEFORE_SLEEP &&
+		    !in_active_trip) {
 			enter_low_power_idle();
 		}
 		return;
@@ -195,11 +286,12 @@ static void store_bin(uint32_t pulses)
 		memset(&current_trip, 0, sizeof(current_trip));
 		current_trip.start_timestamp_s = ts;
 		current_trip.bucket_count = 0;
+		current_trip_id = archive.next_trip_id;
 		in_active_trip = true;
 
 #ifdef DEBUG
-		printk("Started new trip (will be slot %zu, ts=%llu)\n",
-		       nvm_trip_count, (unsigned long long)ts);
+		printk("Started new trip (id=%u, ts=%llu)\n",
+		       current_trip_id, (unsigned long long)ts);
 #endif
 	}
 
@@ -208,9 +300,14 @@ static void store_bin(uint32_t pulses)
 #ifdef DEBUG
 		printk("Trip bucket limit reached, saving and starting new\n");
 #endif
-		save_current_trip_to_nvs(true);  /* completed=true */
-		in_active_trip = false;
-		store_bin(pulses);  /* Recursive call starts new trip */
+		if (save_current_trip_to_nvs(true) == 0) {
+			in_active_trip = false;
+			current_trip_id = 0;
+			store_bin(pulses);  /* Recursive call starts new trip */
+		} else {
+			printk("NVS: Full trip %u retained in RAM after save failure\n",
+			       current_trip_id);
+		}
 		return;
 	}
 
@@ -226,62 +323,107 @@ static void store_bin(uint32_t pulses)
 
 	/* Backup current trip periodically (every 30 min = 6 bins) */
 	if (current_trip.bucket_count % 6 == 0) {
-		save_current_trip_to_nvs(false);  /* completed=false, just backup */
-	}
-}
-
-/*
- * Save daily totals to NVM (called on day change)
- */
-static void save_metadata_to_nvs(void)
-{
-	if (!nvs_ready) return;
-
-	nvs_write(&nvs, NVS_ID_TRIP_COUNT, &nvm_trip_count, sizeof(nvm_trip_count));
-	nvs_write(&nvs, NVS_ID_ACTIVE_FLAG, &in_active_trip, sizeof(in_active_trip));
-
-#ifdef DEBUG
-	printk("NVS: Metadata saved (trips=%zu)\n", nvm_trip_count);
-#endif
-}
-
-/*
- * Save current trip to NVS
- * @param completed: true if trip ended, false if just backup
- */
-static void save_current_trip_to_nvs(bool completed)
-{
-	if (!nvs_ready) return;
-
-	if (completed) {
-		/* Trip completed - save to next slot and increment count */
-		if (nvm_trip_count < MAX_TRIPS) {
-			uint16_t trip_id = NVS_ID_TRIP_BASE + nvm_trip_count;
-			int rc = nvs_write(&nvs, trip_id, &current_trip, sizeof(current_trip));
-			if (rc > 0) {
-				nvm_trip_count++;
-#ifdef DEBUG
-				printk("NVS: Trip saved to slot %zu (id=%u, buckets=%u)\n",
-				       nvm_trip_count - 1, trip_id, current_trip.bucket_count);
-#endif
-			}
-		} else {
-#ifdef DEBUG
-			printk("NVS: Trip storage full (%zu trips)\n", MAX_TRIPS);
-#endif
+		int err = save_current_trip_to_nvs(false);
+		if (err) {
+			printk("NVS: Active trip backup failed (err %d)\n", err);
 		}
-	} else {
-		/* Just backing up in-progress trip */
-		uint16_t trip_id = NVS_ID_TRIP_BASE + nvm_trip_count;
-		nvs_write(&nvs, trip_id, &current_trip, sizeof(current_trip));
-#ifdef DEBUG
-		printk("NVS: Trip backup to slot %zu (buckets=%u)\n",
-		       nvm_trip_count, current_trip.bucket_count);
-#endif
+	}
+}
+
+static int save_archive_metadata(const struct archive_metadata *metadata)
+{
+	int rc = nvs_write(&nvs, NVS_ID_ARCHIVE_METADATA,
+			   metadata, sizeof(*metadata));
+
+	if (rc != sizeof(*metadata) && rc != 0) {
+		printk("NVS: Archive metadata write failed (err %d)\n", rc);
+		return rc < 0 ? rc : -EIO;
 	}
 
-	/* Always update metadata */
-	save_metadata_to_nvs();
+	return 0;
+}
+
+static int read_archive_slot(uint32_t slot, struct archived_trip *record)
+{
+	uint16_t nvs_id;
+	ssize_t rc;
+
+	if (slot >= ARCHIVE_SLOT_COUNT || record == NULL) {
+		return -EINVAL;
+	}
+
+	nvs_id = (uint16_t)(NVS_ID_TRIP_BASE + slot);
+	rc = nvs_read(&nvs, nvs_id, record, sizeof(*record));
+	if (rc == sizeof(*record)) {
+		return 0;
+	}
+
+	return rc < 0 ? (int)rc : -EIO;
+}
+
+/*
+ * Save the active trip. Completed trips are written to the spare ring slot
+ * first, then archive metadata is committed. At capacity, this makes the
+ * previous oldest slot the new spare without reusing its public trip ID.
+ */
+static int save_current_trip_to_nvs(bool completed)
+{
+	struct archived_trip record = {
+		.trip_id = current_trip_id,
+		.trip = current_trip,
+	};
+	int rc;
+
+	if (!nvs_ready) {
+		return -ENODEV;
+	}
+
+	if (!completed) {
+		rc = nvs_write(&nvs, NVS_ID_ACTIVE_TRIP, &record, sizeof(record));
+		if (rc != sizeof(record) && rc != 0) {
+			return rc < 0 ? rc : -EIO;
+		}
+		return 0;
+	}
+
+	uint32_t target_slot = (archive.oldest_slot + archive.count) %
+			       ARCHIVE_SLOT_COUNT;
+	uint16_t target_id = (uint16_t)(NVS_ID_TRIP_BASE + target_slot);
+
+	rc = nvs_write(&nvs, target_id, &record, sizeof(record));
+	if (rc != sizeof(record) && rc != 0) {
+		printk("NVS: Trip %u write failed (err %d)\n", current_trip_id, rc);
+		return rc < 0 ? rc : -EIO;
+	}
+
+	struct archive_metadata updated = archive;
+	updated.next_trip_id++;
+	if (updated.count < MAX_TRIPS) {
+		updated.count++;
+	} else {
+		updated.oldest_slot = (updated.oldest_slot + 1U) %
+				      ARCHIVE_SLOT_COUNT;
+	}
+
+	rc = save_archive_metadata(&updated);
+	if (rc) {
+		/* Metadata still points to the previous archive. Because target_slot
+		 * was the spare slot, all previously committed trips remain valid.
+		 */
+		return rc;
+	}
+
+	archive = updated;
+	rc = nvs_delete(&nvs, NVS_ID_ACTIVE_TRIP);
+	if (rc && rc != -ENOENT) {
+		printk("NVS: Active-trip cleanup failed (err %d)\n", rc);
+	}
+
+#ifdef DEBUG
+	printk("NVS: Trip %u committed to slot %u (count=%u, oldest=%u)\n",
+	       record.trip_id, target_slot, archive.count, archive.oldest_slot);
+#endif
+	return 0;
 }
 
 /*
@@ -337,11 +479,23 @@ int odometer_init(void)
 	}
 
 	gpio_init_callback(&pulse_cb_data, pulse_gpio_callback, BIT(pulse_gpio.pin));
-	gpio_add_callback(pulse_gpio.port, &pulse_cb_data);
-	gpio_pin_interrupt_configure_dt(&pulse_gpio, GPIO_INT_EDGE_TO_ACTIVE);
+	err = gpio_add_callback(pulse_gpio.port, &pulse_cb_data);
+	if (err) {
+		printk("Failed to add pulse GPIO callback (err %d)\n", err);
+		return err;
+	}
+
+	err = gpio_pin_interrupt_configure_dt(&pulse_gpio,
+					      GPIO_INT_EDGE_TO_ACTIVE);
+	if (err) {
+		printk("Failed to configure pulse GPIO interrupt (err %d)\n", err);
+		gpio_remove_callback(pulse_gpio.port, &pulse_cb_data);
+		return err;
+	}
 	printk("Pulse GPIO configured on P0.%02d\n", pulse_gpio.pin);
 
 	k_work_init(&save_work, save_work_handler);
+	k_work_init(&movement_work, movement_work_handler);
 
 	k_timer_init(&bin_timer, bin_timer_handler, NULL);
 	k_timer_start(&bin_timer, K_MINUTES(BIN_INTERVAL_MINUTES), K_MINUTES(BIN_INTERVAL_MINUTES));
@@ -361,16 +515,23 @@ uint32_t odometer_get_pulse_count(void)
 
 size_t odometer_get_trip_count(void)
 {
-	return nvm_trip_count + (in_active_trip ? 1 : 0);
+	return archive.count + (in_active_trip ? 1U : 0U);
 }
 
 uint32_t odometer_get_trip_id(size_t index)
 {
-	if (index >= odometer_get_trip_count()) {
+	size_t completed_count = archive.count;
+
+	if (index >= completed_count + (in_active_trip ? 1U : 0U)) {
 		return 0;
 	}
 
-	return (uint32_t)(NVS_ID_TRIP_BASE + index);
+	if (in_active_trip && index == completed_count) {
+		return current_trip_id;
+	}
+
+	/* IDs are allocated consecutively and never reused. */
+	return archive.next_trip_id - archive.count + (uint32_t)index;
 }
 
 int odometer_read_trip(size_t index, struct trip_entry *trip_out)
@@ -382,24 +543,35 @@ int odometer_read_trip(size_t index, struct trip_entry *trip_out)
 		return -ENODEV;
 	}
 
-	size_t total = odometer_get_trip_count();
+	size_t completed_count = archive.count;
+	size_t total = completed_count + (in_active_trip ? 1U : 0U);
 	if (index >= total) {
 		return -ENOENT;
 	}
 
 	/* If requesting the current active trip */
-	if (in_active_trip && index == total - 1) {
+	if (in_active_trip && index == completed_count) {
 		memcpy(trip_out, &current_trip, sizeof(current_trip));
 		return 0;
 	}
 
-	/* Read from NVS */
-	uint16_t trip_id = NVS_ID_TRIP_BASE + index;
-	ssize_t rc = nvs_read(&nvs, trip_id, trip_out, sizeof(struct trip_entry));
-	if (rc != sizeof(struct trip_entry)) {
+	uint32_t slot = (archive.oldest_slot + (uint32_t)index) %
+			ARCHIVE_SLOT_COUNT;
+	struct archived_trip record;
+	int rc = read_archive_slot(slot, &record);
+	if (rc) {
+		return rc;
+	}
+
+	uint32_t expected_id = archive.next_trip_id - archive.count +
+			       (uint32_t)index;
+	if (record.trip_id != expected_id) {
+		printk("NVS: Trip ID mismatch in slot %u (expected %u, found %u)\n",
+		       slot, expected_id, record.trip_id);
 		return -EIO;
 	}
 
+	memcpy(trip_out, &record.trip, sizeof(*trip_out));
 	return 0;
 }
 
@@ -415,15 +587,38 @@ bool odometer_is_trip_active(void)
 
 void odometer_load_from_nvm(void)
 {
+	struct archive_metadata stored_archive;
+	struct archived_trip active_record;
+	bool archive_valid = false;
 	int rc = nvs_init_storage();
 	if (rc) {
 		printk("NVS init failed (err %d)\n", rc);
 		return;
 	}
 
-	/* Load metadata */
-	nvs_read(&nvs, NVS_ID_TRIP_COUNT, &nvm_trip_count, sizeof(nvm_trip_count));
-	nvs_read(&nvs, NVS_ID_ACTIVE_FLAG, &in_active_trip, sizeof(in_active_trip));
+	rc = nvs_read(&nvs, NVS_ID_ARCHIVE_METADATA,
+		      &stored_archive, sizeof(stored_archive));
+	if (rc == sizeof(stored_archive) &&
+	    stored_archive.magic == ARCHIVE_MAGIC &&
+	    stored_archive.version == ARCHIVE_VERSION &&
+	    stored_archive.count <= MAX_TRIPS &&
+	    stored_archive.oldest_slot < ARCHIVE_SLOT_COUNT &&
+	    stored_archive.next_trip_id >= FIRST_TRIP_ID + stored_archive.count) {
+		archive = stored_archive;
+		archive_valid = true;
+	} else {
+		archive = (struct archive_metadata) {
+			.magic = ARCHIVE_MAGIC,
+			.version = ARCHIVE_VERSION,
+			.count = 0,
+			.oldest_slot = 0,
+			.next_trip_id = FIRST_TRIP_ID,
+		};
+		rc = save_archive_metadata(&archive);
+		if (rc) {
+			printk("NVS: Archive initialization failed (err %d)\n", rc);
+		}
+	}
 
 	/* Load wheel size (use default if not stored) */
 	uint32_t stored_wheel_size;
@@ -433,22 +628,20 @@ void odometer_load_from_nvm(void)
 		}
 	}
 
-	/* Clamp values */
-	if (nvm_trip_count > MAX_TRIPS) nvm_trip_count = MAX_TRIPS;
-
-	/* Restore in-progress trip if active */
-	if (in_active_trip) {
-		uint16_t trip_id = NVS_ID_TRIP_BASE + nvm_trip_count;
-		ssize_t r = nvs_read(&nvs, trip_id, &current_trip, sizeof(current_trip));
-		if (r == sizeof(current_trip)) {
-			printk("NVS: Restored in-progress trip (buckets=%u)\n", current_trip.bucket_count);
-		} else {
-			in_active_trip = false;
-		}
+	/* Restore a current-format active-trip backup. */
+	rc = nvs_read(&nvs, NVS_ID_ACTIVE_TRIP,
+		      &active_record, sizeof(active_record));
+	if (archive_valid && rc == sizeof(active_record) &&
+	    active_record.trip_id == archive.next_trip_id) {
+		current_trip_id = active_record.trip_id;
+		current_trip = active_record.trip;
+		in_active_trip = true;
 	}
 
 	printk("NVS loaded:\n");
-	printk("  Trips in NVS: %zu (active=%d)\n", nvm_trip_count, in_active_trip);
+	printk("  Trips in NVS: %u (active=%d, oldest_slot=%u, next_id=%u)\n",
+	       archive.count, in_active_trip, archive.oldest_slot,
+	       archive.next_trip_id);
 	printk("  Wheel size: %u.%02u\"\n", wheel_size_x100 / 100, wheel_size_x100 % 100);
 }
 
