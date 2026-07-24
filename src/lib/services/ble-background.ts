@@ -1,4 +1,4 @@
-import { initializeBLE, scanForESP32Sensors, downloadTrips, readBatteryInfo, readWheelSizeDescriptor } from './ble';
+import { initializeBLE, scanForESP32Sensors, downloadSensorSnapshot } from './ble';
 import { tripFromSensorDescriptor, type SensorTripDescriptor } from '$lib/domain/trips';
 import { saveSensorDescriptor } from '$lib/persistence/sqlite';
 import { syncSensorSnapshot } from '$lib/services/sync';
@@ -26,7 +26,7 @@ type SensorDescriptor = {
 
 let isScanning = false;
 let scanInterval: number | null = null;
-const discoveredDevices = new Set<string>();
+let previouslyVisibleDevices = new Set<string>();
 const processingDevices = new Map<string, Promise<boolean>>();
 
 function normalizeWheelSizeValue(wheelSize: string): string {
@@ -42,11 +42,12 @@ function normalizeWheelSizeValue(wheelSize: string): string {
 async function processSensor(deviceId: string, deviceName: string, strength: number, device: BleDevice) {
 	console.log(`Processing sensor: ${deviceName} (${deviceId})`);
 
-	const descriptor = await downloadTrips<SensorDescriptor>(device);
+	const snapshot = await downloadSensorSnapshot<SensorDescriptor>(device);
+	const descriptor = snapshot.descriptor;
 	console.log('Sensor descriptor received:', descriptor);
-	const wheelSize = normalizeWheelSizeValue(await readWheelSizeDescriptor(device.deviceId));
+	const wheelSize = normalizeWheelSizeValue(snapshot.wheelSize);
 	console.log('Wheel size descriptor received:', wheelSize);
-	const battery = await readBatteryInfo(device.deviceId);
+	const battery = snapshot.battery;
 	console.log('Battery info received:', battery);
 
 	const wheelCircumference = getWheelCircumference(wheelSize);
@@ -69,7 +70,6 @@ async function processSensor(deviceId: string, deviceName: string, strength: num
 		console.error(`Failed to sync sensor ${deviceName}:`, error);
 	});
 
-	discoveredDevices.add(deviceId);
 }
 
 function queueSensorProcessing(deviceId: string, deviceName: string, strength: number, device: BleDevice) {
@@ -91,7 +91,7 @@ function queueSensorProcessing(deviceId: string, deviceName: string, strength: n
 }
 
 export function waitForSensorData(deviceId: string): Promise<boolean> {
-	return processingDevices.get(deviceId) ?? Promise.resolve(discoveredDevices.has(deviceId));
+	return processingDevices.get(deviceId) ?? Promise.resolve(previouslyVisibleDevices.has(deviceId));
 }
 
 /**
@@ -110,10 +110,13 @@ async function performScan() {
 		
 		const sensors = await scanForESP32Sensors(SCAN_DURATION);
 		console.log(`Found ${sensors.length} ESP32 sensors`);
+		const visibleDevices = new Set(sensors.map((sensor) => sensor.macAddress));
 		
-		// Process new sensors
+		// Process a sensor once when it appears. A parked sensor disappears
+		// after its advertising window, so its next movement wake is treated
+		// as a fresh appearance and downloads the new trip/battery snapshot.
 		for (const sensor of sensors) {
-			if (!discoveredDevices.has(sensor.macAddress) && !processingDevices.has(sensor.macAddress)) {
+			if (!previouslyVisibleDevices.has(sensor.macAddress) && !processingDevices.has(sensor.macAddress)) {
 				console.log(`New sensor discovered: ${sensor.name}`);
 				queueSensorProcessing(sensor.macAddress, sensor.name, sensor.strength, sensor.device);
 			}
@@ -125,6 +128,7 @@ async function performScan() {
 				signalStrength: rssiToPercentage(sensor.strength)
 			});
 		}
+		previouslyVisibleDevices = visibleDevices;
 		
 		// Remove stale devices (not seen in last 30 seconds)
 		bleDevicesState.removeStaleDevices(30000);
@@ -190,6 +194,6 @@ export function isBackgroundScanningActive(): boolean {
  * Reset discovered devices (useful for testing or manual rescan)
  */
 export function resetDiscoveredDevices() {
-	discoveredDevices.clear();
-	console.log('Discovered devices cleared');
+	previouslyVisibleDevices.clear();
+	console.log('Visible devices cleared');
 }

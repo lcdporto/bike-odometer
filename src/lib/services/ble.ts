@@ -1,6 +1,5 @@
 import { BleClient, type BleDevice, type ScanResult } from '@capacitor-community/bluetooth-le';
 import { isPlaceholderDeviceName } from '$lib/utils';
-import { toast } from "svelte-sonner";
 
 // UUID constants — byte-reversed from spec v1 (firmware transmits UUIDs little-endian)
 const SERVICE_UUID =    '78563412-7856-3412-5678-123412345678';
@@ -72,8 +71,6 @@ export async function scanForESP32Sensors(scanDurationMs: number = 5000): Promis
 						strength: rssi,
 						device: result.device
 					});
-
-					writeDetectionTimestamp(deviceId);
 				}
 			}
 		);
@@ -98,46 +95,6 @@ export async function scanForESP32Sensors(scanDurationMs: number = 5000): Promis
 	return discoveredSensors;
 }
 
-async function writeDetectionTimestamp(deviceId: string): Promise<void> {
-	const unixTimestampSeconds = Math.floor(Date.now() / 1000);
-	const payload = new TextEncoder().encode(String(unixTimestampSeconds));
-	const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
-
-	try {
-		await BleClient.connect(deviceId, () => {
-			console.log(`Device ${deviceId} disconnected`);
-		});
-
-		const services = await BleClient.getServices(deviceId);
-		const discoveredCharacteristics: string[] = [];
-
-		for (const service of services) {
-			for (const characteristic of service.characteristics ?? []) {
-				discoveredCharacteristics.push(`${service.uuid} -> ${characteristic.uuid}`);
-			}
-		}
-
-		if (discoveredCharacteristics.length > 0) {
-			console.log(`[BLE] Discovered characteristics for ${deviceId}:`, discoveredCharacteristics);
-		} else {
-			console.log(`[BLE] No characteristics discovered for ${deviceId}`);
-		}
-
-		await BleClient.write(deviceId, SERVICE_UUID, TIME_UUID, view);
-
-		console.log(`[BLE] Wrote detection timestamp ${unixTimestampSeconds} to ${deviceId}`);
-	} catch (error) {
-		console.error(`[BLE] Failed to write detection timestamp to ${deviceId}:`, error);
-		toast(`Failed to write detection timestamp to ${deviceId}`);
-	} finally {
-		try {
-			await BleClient.disconnect(deviceId);
-		} catch {
-			// Ignore disconnect errors
-		}
-	}
-}
-
 function decodeCharacteristicString(dataView: DataView): string {
 	const decoder = new TextDecoder('utf-8');
 	return decoder.decode(dataView).replace(/\0+$/g, '').trim();
@@ -148,16 +105,24 @@ function encodeCharacteristicString(value: string): DataView {
 	return new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
 }
 
+async function readConnectedStringCharacteristic(
+	deviceId: string,
+	characteristicUuid: string,
+	label: string
+): Promise<string> {
+	const dataView = await BleClient.read(deviceId, SERVICE_UUID, characteristicUuid);
+	const value = decodeCharacteristicString(dataView);
+	console.log(`[BLE] Read ${label}:`, value);
+	return value;
+}
+
 async function readStringCharacteristic(deviceId: string, characteristicUuid: string, label: string): Promise<string> {
 	try {
 		await BleClient.connect(deviceId, () => {
 			console.log(`Device ${deviceId} disconnected`);
 		});
 
-		const dataView = await BleClient.read(deviceId, SERVICE_UUID, characteristicUuid);
-		const value = decodeCharacteristicString(dataView);
-		console.log(`[BLE] Read ${label}:`, value);
-		return value;
+		return await readConnectedStringCharacteristic(deviceId, characteristicUuid, label);
 	} catch (error) {
 		console.error(`[BLE] Failed to read ${label}:`, error);
 		throw error;
@@ -215,8 +180,7 @@ export interface BatteryInfo {
 	percent: number;
 }
 
-export async function readBatteryInfo(deviceId: string): Promise<BatteryInfo> {
-	const value = await readStringCharacteristic(deviceId, BATTERY_UUID, 'battery info');
+function parseBatteryInfo(deviceId: string, value: string): BatteryInfo {
 	const payload = JSON.parse(value) as { mv?: unknown; pct?: unknown };
 	const millivolts = Number(payload.mv);
 	const percent = Number(payload.pct);
@@ -229,6 +193,11 @@ export async function readBatteryInfo(deviceId: string): Promise<BatteryInfo> {
 		millivolts: Math.round(millivolts),
 		percent: Math.max(0, Math.min(100, Math.round(percent)))
 	};
+}
+
+export async function readBatteryInfo(deviceId: string): Promise<BatteryInfo> {
+	const value = await readStringCharacteristic(deviceId, BATTERY_UUID, 'battery info');
+	return parseBatteryInfo(deviceId, value);
 }
 
 export async function writeWheelSizeDescriptor(deviceId: string, wheelSizeInches: string): Promise<void> {
@@ -250,13 +219,7 @@ export async function writeWheelSizeDescriptor(deviceId: string, wheelSizeInches
  *   4. Accumulate chunks until a complete JSON document is received
  *   5. Parse and return
  */
-export async function downloadTrips<T = unknown>(device: BleDevice): Promise<T> {
-	const deviceId = device.deviceId;
-
-	await BleClient.connect(deviceId, () => {
-		console.log(`[BLE] Device ${deviceId} disconnected`);
-	});
-
+async function downloadTripsConnected<T>(deviceId: string): Promise<T> {
 	try {
 		let resolveTransfer!: (value: T) => void;
 		const transferPromise = new Promise<T>((resolve) => {
@@ -304,6 +267,63 @@ export async function downloadTrips<T = unknown>(device: BleDevice): Promise<T> 
 	} catch (error) {
 		console.error('[BLE] Failed to download trips:', error);
 		throw error;
+	}
+}
+
+export async function downloadTrips<T = unknown>(device: BleDevice): Promise<T> {
+	const deviceId = device.deviceId;
+
+	await BleClient.connect(deviceId, () => {
+		console.log(`[BLE] Device ${deviceId} disconnected`);
+	});
+
+	try {
+		return await downloadTripsConnected<T>(deviceId);
+	} finally {
+		try {
+			await BleClient.disconnect(deviceId);
+		} catch {
+			// Ignore disconnect errors
+		}
+	}
+}
+
+export interface SensorSnapshot<T> {
+	descriptor: T;
+	wheelSize: string;
+	battery: BatteryInfo;
+}
+
+/**
+ * Synchronize all sensor data in one connection. The maximum-life firmware
+ * stops advertising after a connection, so reconnecting for every
+ * characteristic is both unreliable and unnecessarily expensive.
+ */
+export async function downloadSensorSnapshot<T>(device: BleDevice): Promise<SensorSnapshot<T>> {
+	const deviceId = device.deviceId;
+
+	await BleClient.connect(deviceId, () => {
+		console.log(`[BLE] Device ${deviceId} disconnected`);
+	});
+
+	try {
+		const unixTimestampSeconds = Math.floor(Date.now() / 1000);
+		await BleClient.write(
+			deviceId,
+			SERVICE_UUID,
+			TIME_UUID,
+			encodeCharacteristicString(String(unixTimestampSeconds))
+		);
+
+		const batteryValue = await readConnectedStringCharacteristic(deviceId, BATTERY_UUID, 'battery info');
+		const wheelSize = await readConnectedStringCharacteristic(deviceId, WHEEL_SIZE_UUID, 'wheel size');
+		const descriptor = await downloadTripsConnected<T>(deviceId);
+
+		return {
+			descriptor,
+			wheelSize,
+			battery: parseBatteryInfo(deviceId, batteryValue)
+		};
 	} finally {
 		try {
 			await BleClient.disconnect(deviceId);

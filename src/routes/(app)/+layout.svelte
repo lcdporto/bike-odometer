@@ -102,7 +102,6 @@
 			{#if sensorState.batteryPercent !== null}
 				<Battery class="h-4 w-4" />
 				<span class="font-medium">{sensorState.batteryPercent}%</span>
-				<span class="text-muted-foreground">{(sensorState.batteryMillivolts! / 1000).toFixed(2)} V</span>
 			{/if}
 			<Select type="single" value={wheelSize} onValueChange={handleWheelSizeChange}>
 				<SelectTrigger class="w-[92px] bg-card text-sm">
