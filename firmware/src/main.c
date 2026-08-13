@@ -6,7 +6,6 @@
  */
 
 #include <zephyr/kernel.h>
-#include <zephyr/sys/printk.h>
 #include <zephyr/settings/settings.h>
 #include <hal/nrf_regulators.h>
 
@@ -43,14 +42,12 @@ int main(void)
 	 */
 	err = battery_measure();
 	if (err) {
-		printk("Battery measurement failed (err %d)\n", err);
 		/* Continue - battery info will just be unavailable */
 	}
 
 	/* Initialize BLE */
 	err = ble_service_init();
 	if (err) {
-		printk("BLE init failed (err %d)\n", err);
 		return 0;
 	}
 
@@ -60,7 +57,6 @@ int main(void)
 	/* Initialize settings subsystem (for RTC) and load */
 	err = settings_subsys_init();
 	if (err) {
-		printk("Settings init failed (err %d)\n", err);
 	} else {
 		settings_load();
 	}
@@ -71,7 +67,6 @@ int main(void)
 	/* Initialize odometer (pulse GPIO and bin timer) */
 	err = odometer_init();
 	if (err) {
-		printk("Odometer init failed (err %d)\n", err);
 		/* Continue - BLE will still work */
 	}
 

@@ -6,7 +6,7 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/settings/settings.h>
-#include <zephyr/sys/printk.h>
+
 
 /* State */
 static uint64_t base_unix_time;      /* Unix timestamp when time was set */
@@ -34,8 +34,6 @@ static int rtc_set(const char *name, size_t len,
          * but it's better than nothing until BLE syncs. */
         base_uptime_ms = k_uptime_get();
         time_is_set = (base_unix_time > 0);
-        printk("RTC: Loaded base time %llu (stale until BLE sync)\n",
-               (unsigned long long)base_unix_time);
         return 0;
     }
 
@@ -48,7 +46,6 @@ SETTINGS_STATIC_HANDLER_DEFINE(rtc, "rtc", NULL, rtc_set, NULL, 0);
 void rtc_init(void)
 {
     /* Settings are loaded by main's settings_load() call */
-    printk("RTC: Initialized, time_set=%d\n", time_is_set);
 }
 
 void rtc_set_time(uint64_t unix_time)
@@ -57,14 +54,11 @@ void rtc_set_time(uint64_t unix_time)
     base_uptime_ms = k_uptime_get();
     time_is_set = true;
 
-    printk("RTC: Time set to %llu (uptime_base=%lld)\n",
-           (unsigned long long)unix_time, (long long)base_uptime_ms);
 
 #if IS_ENABLED(CONFIG_SETTINGS)
     /* Persist to NVS */
     int err = settings_save_one("rtc/base", &base_unix_time, sizeof(base_unix_time));
     if (err) {
-        printk("RTC: Failed to save time to NVS (%d)\n", err);
     }
 #endif
 }

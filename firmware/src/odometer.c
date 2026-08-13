@@ -20,13 +20,11 @@
 #include <zephyr/fs/nvs.h>
 #include <zephyr/settings/settings.h>
 #include <zephyr/sys/atomic.h>
-#include <zephyr/sys/printk.h>
 #include <zephyr/irq.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
 
-//#define DEBUG 1
 
 /* GPIO configuration from devicetree */
 #define PULSE_NODE DT_ALIAS(pulse_sensor)
@@ -120,9 +118,6 @@ static void pulse_gpio_callback(const struct device *dev, struct gpio_callback *
 {
 	unsigned int key = irq_lock();
 	pulse_count++;
-#ifdef DEBUG
-	printk("DEBUG: pulse detected pins=0x%08x total=%u\n", pins, pulse_count);
-#endif
 	irq_unlock(key);
 
 	/* Open one BLE window on the first movement after boot or a quiet bin.
@@ -159,10 +154,6 @@ static void enter_low_power_idle(void)
 {
 	unsigned int key;
 	bool movement_already_pending;
-
-	#ifdef DEBUG
-	printk("Entering low power idle... GRTC keeps running, P0.%02d will wake\n", pulse_gpio.pin);
-	#endif
 
 	/* Mark parked before stopping the timer. A Hall edge that arrives during
 	 * this transition will then queue movement_work on the same work queue,
@@ -210,15 +201,10 @@ static void movement_work_handler(struct k_work *work)
 	 * keeps the value read by the phone representative of the current ride,
 	 * rather than retaining the measurement taken at the previous boot.
 	 */
-	if (battery_measure() != 0) {
-		printk("Movement wake: battery measurement failed\n");
-	}
+	(void)battery_measure();
 
 	ble_service_start_advertising_for(MOVEMENT_ADVERTISING_SECONDS);
 
-#ifdef DEBUG
-	printk("Movement wake: binning resumed and BLE window opened\n");
-#endif
 }
 
 /*
@@ -253,22 +239,14 @@ static void store_bin(uint32_t pulses)
 		atomic_set(&movement_window_armed, 1);
 
 		if (in_active_trip) {
-#ifdef DEBUG
-			printk("Trip ended (no pulses), saving trip %u\n", current_trip_id);
-#endif
 			if (save_current_trip_to_nvs(true) == 0) {
 				in_active_trip = false;
 				current_trip_id = 0;
 			} else {
-				printk("NVS: Trip %u retained in RAM after save failure\n",
-				       current_trip_id);
 			}
 		}
 
 		consecutive_zero_bins++;
-#ifdef DEBUG
-		printk("Zero bins: %u/%d before sleep\n", consecutive_zero_bins, ZERO_BINS_BEFORE_SLEEP);
-#endif
 
 		/* Keep retrying if the completed trip is still only in RAM. */
 		if (consecutive_zero_bins >= ZERO_BINS_BEFORE_SLEEP &&
@@ -288,25 +266,15 @@ static void store_bin(uint32_t pulses)
 		current_trip.bucket_count = 0;
 		current_trip_id = archive.next_trip_id;
 		in_active_trip = true;
-
-#ifdef DEBUG
-		printk("Started new trip (id=%u, ts=%llu)\n",
-		       current_trip_id, (unsigned long long)ts);
-#endif
 	}
 
 	/* Check if current trip is full */
 	if (current_trip.bucket_count >= BUCKETS_PER_TRIP) {
-#ifdef DEBUG
-		printk("Trip bucket limit reached, saving and starting new\n");
-#endif
 		if (save_current_trip_to_nvs(true) == 0) {
 			in_active_trip = false;
 			current_trip_id = 0;
 			store_bin(pulses);  /* Recursive call starts new trip */
 		} else {
-			printk("NVS: Full trip %u retained in RAM after save failure\n",
-			       current_trip_id);
 		}
 		return;
 	}
@@ -315,18 +283,9 @@ static void store_bin(uint32_t pulses)
 	current_trip.buckets[current_trip.bucket_count] = pulses;
 	current_trip.bucket_count++;
 
-#ifdef DEBUG
-	uint32_t distance = pulses * WHEEL_CIRCUMFERENCE_MM(wheel_size_x100);
-	printk("Bucket stored: bucket=%u pulses=%u\n",
-	       current_trip.bucket_count, pulses);
-#endif
-
 	/* Backup current trip periodically (every 30 min = 6 bins) */
 	if (current_trip.bucket_count % 6 == 0) {
-		int err = save_current_trip_to_nvs(false);
-		if (err) {
-			printk("NVS: Active trip backup failed (err %d)\n", err);
-		}
+		(void)save_current_trip_to_nvs(false);
 	}
 }
 
@@ -336,7 +295,6 @@ static int save_archive_metadata(const struct archive_metadata *metadata)
 			   metadata, sizeof(*metadata));
 
 	if (rc != sizeof(*metadata) && rc != 0) {
-		printk("NVS: Archive metadata write failed (err %d)\n", rc);
 		return rc < 0 ? rc : -EIO;
 	}
 
@@ -392,7 +350,6 @@ static int save_current_trip_to_nvs(bool completed)
 
 	rc = nvs_write(&nvs, target_id, &record, sizeof(record));
 	if (rc != sizeof(record) && rc != 0) {
-		printk("NVS: Trip %u write failed (err %d)\n", current_trip_id, rc);
 		return rc < 0 ? rc : -EIO;
 	}
 
@@ -416,13 +373,8 @@ static int save_current_trip_to_nvs(bool completed)
 	archive = updated;
 	rc = nvs_delete(&nvs, NVS_ID_ACTIVE_TRIP);
 	if (rc && rc != -ENOENT) {
-		printk("NVS: Active-trip cleanup failed (err %d)\n", rc);
 	}
 
-#ifdef DEBUG
-	printk("NVS: Trip %u committed to slot %u (count=%u, oldest=%u)\n",
-	       record.trip_id, target_slot, archive.count, archive.oldest_slot);
-#endif
 	return 0;
 }
 
@@ -435,7 +387,6 @@ static int nvs_init_storage(void)
 	const struct device *flash_dev = NVS_PARTITION_DEVICE;
 
 	if (!device_is_ready(flash_dev)) {
-		printk("Flash device not ready\n");
 		return -ENODEV;
 	}
 
@@ -444,7 +395,6 @@ static int nvs_init_storage(void)
 
 	int rc = flash_get_page_info_by_offs(flash_dev, nvs.offset, &info);
 	if (rc) {
-		printk("Unable to get flash page info (err %d)\n", rc);
 		return rc;
 	}
 	nvs.sector_size = info.size;
@@ -452,12 +402,10 @@ static int nvs_init_storage(void)
 
 	rc = nvs_mount(&nvs);
 	if (rc) {
-		printk("NVS mount failed (err %d)\n", rc);
 		return rc;
 	}
 
 	nvs_ready = true;
-	printk("NVS mounted: %u sectors of %u bytes\n", nvs.sector_count, nvs.sector_size);
 	return 0;
 }
 
@@ -468,38 +416,32 @@ static int nvs_init_storage(void)
 int odometer_init(void)
 {
 	if (!gpio_is_ready_dt(&pulse_gpio)) {
-		printk("Pulse GPIO device not ready\n");
 		return -ENODEV;
 	}
 
 	int err = gpio_pin_configure_dt(&pulse_gpio, GPIO_INPUT);
 	if (err) {
-		printk("Failed to configure pulse pin (err %d)\n", err);
 		return err;
 	}
 
 	gpio_init_callback(&pulse_cb_data, pulse_gpio_callback, BIT(pulse_gpio.pin));
 	err = gpio_add_callback(pulse_gpio.port, &pulse_cb_data);
 	if (err) {
-		printk("Failed to add pulse GPIO callback (err %d)\n", err);
 		return err;
 	}
 
 	err = gpio_pin_interrupt_configure_dt(&pulse_gpio,
 					      GPIO_INT_EDGE_TO_ACTIVE);
 	if (err) {
-		printk("Failed to configure pulse GPIO interrupt (err %d)\n", err);
 		gpio_remove_callback(pulse_gpio.port, &pulse_cb_data);
 		return err;
 	}
-	printk("Pulse GPIO configured on P0.%02d\n", pulse_gpio.pin);
 
 	k_work_init(&save_work, save_work_handler);
 	k_work_init(&movement_work, movement_work_handler);
 
 	k_timer_init(&bin_timer, bin_timer_handler, NULL);
 	k_timer_start(&bin_timer, K_MINUTES(BIN_INTERVAL_MINUTES), K_MINUTES(BIN_INTERVAL_MINUTES));
-	printk("Bin timer started (%d minute interval)\n", BIN_INTERVAL_MINUTES);
 
 	return 0;
 }
@@ -566,8 +508,6 @@ int odometer_read_trip(size_t index, struct trip_entry *trip_out)
 	uint32_t expected_id = archive.next_trip_id - archive.count +
 			       (uint32_t)index;
 	if (record.trip_id != expected_id) {
-		printk("NVS: Trip ID mismatch in slot %u (expected %u, found %u)\n",
-		       slot, expected_id, record.trip_id);
 		return -EIO;
 	}
 
@@ -592,7 +532,6 @@ void odometer_load_from_nvm(void)
 	bool archive_valid = false;
 	int rc = nvs_init_storage();
 	if (rc) {
-		printk("NVS init failed (err %d)\n", rc);
 		return;
 	}
 
@@ -616,7 +555,6 @@ void odometer_load_from_nvm(void)
 		};
 		rc = save_archive_metadata(&archive);
 		if (rc) {
-			printk("NVS: Archive initialization failed (err %d)\n", rc);
 		}
 	}
 
@@ -638,11 +576,6 @@ void odometer_load_from_nvm(void)
 		in_active_trip = true;
 	}
 
-	printk("NVS loaded:\n");
-	printk("  Trips in NVS: %u (active=%d, oldest_slot=%u, next_id=%u)\n",
-	       archive.count, in_active_trip, archive.oldest_slot,
-	       archive.next_trip_id);
-	printk("  Wheel size: %u.%02u\"\n", wheel_size_x100 / 100, wheel_size_x100 % 100);
 }
 
 uint32_t odometer_get_wheel_size_x100(void)

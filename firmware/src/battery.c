@@ -14,8 +14,8 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/adc.h>
-#include <zephyr/sys/printk.h>
 #include <zephyr/devicetree.h>
+
 
 /* ADC configuration from devicetree */
 #define ADC_NODE DT_NODELABEL(adc)
@@ -117,13 +117,11 @@ int battery_measure(void)
 	if (!adc_initialized) {
 		adc_dev = DEVICE_DT_GET(ADC_NODE);
 		if (!device_is_ready(adc_dev)) {
-			printk("Battery: ADC device not ready\n");
 			return -ENODEV;
 		}
 
 		err = adc_channel_setup(adc_dev, &channel_cfg);
 		if (err) {
-			printk("Battery: ADC channel setup failed (%d)\n", err);
 			return err;
 		}
 		adc_initialized = true;
@@ -140,7 +138,6 @@ int battery_measure(void)
 		adc_buffer = 0;
 		err = adc_read(adc_dev, &sequence);
 		if (err) {
-			printk("Battery: ADC read failed (%d)\n", err);
 			return err;
 		}
 		sum += adc_buffer;
@@ -151,8 +148,6 @@ int battery_measure(void)
 	battery_voltage_mv = adc_raw_to_mv(avg_raw);
 	battery_percent = voltage_to_percent(battery_voltage_mv);
 
-	printk("Battery: raw=%d, voltage=%u mV, charge=%u%%\n",
-		   avg_raw, battery_voltage_mv, battery_percent);
 
 	return 0;
 }

@@ -9,7 +9,6 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/atomic.h>
-#include <zephyr/sys/printk.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/hci.h>
 #include <zephyr/bluetooth/conn.h>
@@ -21,6 +20,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+
 
 #define DEVICE_NAME             CONFIG_BT_DEVICE_NAME
 #define DEVICE_NAME_SUFFIX_LEN  5
@@ -53,22 +53,19 @@ static void update_device_name(void)
 
 	bt_id_get(&addr, &count);
 	if (count == 0U) {
-		printk("BLE: Using base device name '%s' (no identity address)\n", device_name);
 		return;
 	}
 
-	written = snprintk(device_name, sizeof(device_name), "%s-%02X%02X",
+	written = snprintf(device_name, sizeof(device_name), "%s-%02X%02X",
 				 DEVICE_NAME,
 				 addr.a.val[1],
 				 addr.a.val[0]);
 	if (written < 0 || written >= (int)sizeof(device_name)) {
 		memcpy(device_name, DEVICE_NAME, base_len);
 		device_name[base_len] = '\0';
-		printk("BLE: Failed to append address suffix, using base name '%s'\n", device_name);
 		return;
 	}
 
-	printk("BLE: Advertising as '%s'\n", device_name);
 }
 
 /*
@@ -166,8 +163,6 @@ static ssize_t read_trips(struct bt_conn *conn,
 		tpos += (size_t)written;
 
 		if (tpos >= (sizeof(out) - pos - 2)) {
-			printk("BLE trips payload truncated at trip %zu/%zu (%u-byte ATT limit)\n",
-			       t, trip_count, BT_ATT_MAX_ATTRIBUTE_LEN);
 			break;
 		}
 
@@ -282,7 +277,6 @@ static void trips_stream_advance_to_next_trip(void)
 			return;
 		}
 
-		printk("BLE: Failed to read trip %zu\n", trips_stream.trip_index);
 		trips_stream.trip_index++;
 	}
 
@@ -321,7 +315,6 @@ static size_t trips_stream_build_chunk(char *chunk, size_t chunk_size)
 					   trips_stream.trip_id,
 					   (unsigned long long)trips_stream.trip.start_timestamp_s);
 			if (written < 0 || (size_t)written >= sizeof(part)) {
-				printk("BLE: Failed to format trip header\n");
 				trips_stream_reset();
 				return 0;
 			}
@@ -344,7 +337,6 @@ static size_t trips_stream_build_chunk(char *chunk, size_t chunk_size)
 					   trips_stream.bucket_index > 0 ? "," : "",
 					   trips_stream.trip.buckets[trips_stream.bucket_index]);
 			if (written < 0 || (size_t)written >= sizeof(part)) {
-				printk("BLE: Failed to format trip bucket\n");
 				trips_stream_reset();
 				return 0;
 			}
@@ -410,7 +402,6 @@ static void trips_stream_start(void)
 	trips_stream.trip_id = 0;
 	trips_stream.bucket_index = 0;
 
-	printk("BLE: Starting trips notification stream (%zu trips)\n", trips_stream.trip_count);
 	k_work_submit_to_queue(&trips_notify_work_q, &trips_notify_work);
 }
 
@@ -423,7 +414,6 @@ static void trips_notify_complete(struct bt_conn *conn, void *user_data)
 	if (trips_stream.active) {
 		k_work_submit_to_queue(&trips_notify_work_q, &trips_notify_work);
 	} else {
-		printk("BLE: Trips notification stream complete\n");
 	}
 }
 
@@ -453,7 +443,6 @@ static void trips_notify_work_handler(struct k_work *work)
 
 	trips_stream.notify_params.uuid = &bike_trips_uuid.uuid;
 	if (trips_value_attr == NULL) {
-		printk("BLE: Trips value attribute not set, cannot notify\n");
 		trips_stream_reset();
 		return;
 	}
@@ -468,7 +457,6 @@ static void trips_notify_work_handler(struct k_work *work)
 	if (err) {
 		trips_stream.notify_in_progress = false;
 		trips_stream_reset();
-		printk("BLE: Trips notification failed (err %d)\n", err);
 	}
 }
 
@@ -479,7 +467,6 @@ static void trips_ccc_changed(const struct bt_gatt_attr *attr, uint16_t value)
 	trips_stream.notify_enabled = (value & BT_GATT_CCC_NOTIFY) != 0U;
 	if (!trips_stream.notify_enabled) {
 		trips_stream_reset();
-		printk("BLE: Trips notifications disabled\n");
 	}
 }
 
@@ -588,7 +575,6 @@ static ssize_t write_wheelsize(struct bt_conn *conn,
 	}
 
 	odometer_set_wheel_size_x100(size_x100);
-	printk("BLE: Wheel size set to %u.%02u\"\n", size_x100 / 100, size_x100 % 100);
 
 	return len;
 }
@@ -638,7 +624,6 @@ static ssize_t write_time(struct bt_conn *conn,
 	}
 
 	rtc_set_time(unix_time);
-	printk("BLE: Time set to %llu\n", (unsigned long long)unix_time);
 
 	return len;
 }
@@ -704,18 +689,15 @@ static void adv_work_handler(struct k_work *work)
 	err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_2, ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
 
 	if (err) {
-		printk("Advertising with UUID failed (err %d), retrying without scan response\n", err);
 		err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_2, ad, ARRAY_SIZE(ad), NULL, 0);
 	}
 
 	if (err) {
-		printk("Advertising failed to start (err %d)\n", err);
 		return;
 	}
 
 	atomic_set(&advertising, 1);
 	k_work_reschedule(&adv_timeout_work, K_SECONDS(duration_seconds));
-	printk("Advertising started for %u seconds\n", duration_seconds);
 }
 
 static void adv_stop_work_handler(struct k_work *work)
@@ -736,11 +718,9 @@ static void adv_stop_work_handler(struct k_work *work)
 	err = bt_le_adv_stop();
 	if (err) {
 		atomic_set(&advertising, 1);
-		printk("Advertising stop failed (err %d)\n", err);
 		return;
 	}
 
-	printk("Advertising stopped\n");
 }
 
 static void adv_timeout_work_handler(struct k_work *work)
@@ -752,7 +732,6 @@ static void adv_timeout_work_handler(struct k_work *work)
 static void connected(struct bt_conn *conn, uint8_t err)
 {
 	if (err) {
-		printk("Connection failed, err 0x%02x %s\n", err, bt_hci_err_to_str(err));
 		return;
 	}
 
@@ -765,7 +744,6 @@ static void connected(struct bt_conn *conn, uint8_t err)
 	atomic_set(&requested_adv_seconds, 0);
 	k_work_cancel_delayable(&adv_timeout_work);
 
-	printk("Connected\n");
 }
 
 static void disconnected(struct bt_conn *conn, uint8_t reason)
@@ -779,12 +757,10 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 	}
 	atomic_set(&connected_state, 0);
 
-	printk("Disconnected, reason 0x%02x %s\n", reason, bt_hci_err_to_str(reason));
 }
 
 static void recycled_cb(void)
 {
-	printk("Connection object available from previous conn. Disconnect is complete!\n");
 }
 
 BT_CONN_CB_DEFINE(conn_callbacks) = {
@@ -801,11 +777,9 @@ int ble_service_init(void)
 {
 	int err = bt_enable(NULL);
 	if (err) {
-		printk("Bluetooth init failed (err %d)\n", err);
 		return err;
 	}
 
-	printk("Bluetooth initialized\n");
 	update_device_name();
 	ad[1].data_len = strlen(device_name);
 
