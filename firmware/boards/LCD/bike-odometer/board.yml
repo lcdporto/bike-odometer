@@ -1,6 +1,6 @@
 board:
   name: bike-odometer
+  full_name: Bike Odometer
   vendor: LCD
   socs:
   - name: nrf54l10
-  - name: nrf54l15

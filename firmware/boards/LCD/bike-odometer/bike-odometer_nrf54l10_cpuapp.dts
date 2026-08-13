@@ -91,4 +91,4 @@
 	};
 };
 
-#include <nordic/nrf54l10_partition.dtsi>
+#include <vendor/nordic/nrf54l10_cpuapp_partition.dtsi>
