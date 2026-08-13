@@ -8,6 +8,8 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/settings/settings.h>
+#include <hal/nrf_regulators.h>
+
 
 #include "battery.h"
 #include "odometer.h"
@@ -16,11 +18,25 @@
 
 #define BOOT_ADVERTISING_SECONDS 60U
 
+static void enable_dcdc(void)
+{
+	/* INDUCTORDET is only valid while VREGMAIN DC/DC is disabled. */
+	bool inductor_detected = nrf_regulators_inductor_check(NRF_REGULATORS);
+
+
+	if (!inductor_detected) {
+		return;
+	}
+
+	nrf_regulators_vreg_enable_set(NRF_REGULATORS,
+					NRF_REGULATORS_VREG_MAIN, true);
+}
+
 int main(void)
 {
 	int err;
 
-	printk("Starting Bike Odometer\n");
+	enable_dcdc();
 
 	/* Measure battery FIRST before any other subsystems
 	 * to minimize load on CR2032 (high internal resistance)
