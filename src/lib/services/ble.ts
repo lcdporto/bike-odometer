@@ -12,6 +12,45 @@ const WHEEL_SIZE_UUID = '78563412-7856-3412-5678-12341234568d';
 
 // Trips download timeout (ms)
 const TRIPS_TIMEOUT_MS = 30_000;
+const DEVICE_SESSION_MAX_MS = 5 * 60 * 1000;
+
+let sessionDeviceId: string | null = null;
+let sessionTimeout: ReturnType<typeof setTimeout> | null = null;
+
+function clearSessionTimeout(): void {
+	if (sessionTimeout !== null) {
+		clearTimeout(sessionTimeout);
+		sessionTimeout = null;
+	}
+}
+
+function markSessionDisconnected(deviceId: string): void {
+	if (sessionDeviceId === deviceId) {
+		sessionDeviceId = null;
+		clearSessionTimeout();
+	}
+}
+
+function startSessionTimeout(deviceId: string): void {
+	clearSessionTimeout();
+	sessionTimeout = setTimeout(() => {
+		disconnectDeviceSession(deviceId).catch((error) => {
+			console.error(`[BLE] Failed to close expired session for ${deviceId}:`, error);
+		});
+	}, DEVICE_SESSION_MAX_MS);
+}
+
+export async function disconnectDeviceSession(deviceId?: string): Promise<void> {
+	const activeDeviceId = sessionDeviceId;
+	if (!activeDeviceId || (deviceId && deviceId !== activeDeviceId)) return;
+
+	markSessionDisconnected(activeDeviceId);
+	try {
+		await BleClient.disconnect(activeDeviceId);
+	} catch {
+		// It may already have disconnected remotely.
+	}
+}
 
 
 export interface ScannedSensor {
@@ -141,6 +180,17 @@ async function writeStringCharacteristic(
 	value: string,
 	label: string
 ): Promise<void> {
+	if (sessionDeviceId === deviceId) {
+		await BleClient.write(
+			deviceId,
+			SERVICE_UUID,
+			characteristicUuid,
+			encodeCharacteristicString(value)
+		);
+		console.log(`[BLE] Wrote ${label}:`, value);
+		return;
+	}
+
 	try {
 		await BleClient.connect(deviceId, () => {
 			console.log(`Device ${deviceId} disconnected`);
@@ -301,10 +351,17 @@ export interface SensorSnapshot<T> {
  */
 export async function downloadSensorSnapshot<T>(device: BleDevice): Promise<SensorSnapshot<T>> {
 	const deviceId = device.deviceId;
+	let completed = false;
+
+	if (sessionDeviceId && sessionDeviceId !== deviceId) {
+		await disconnectDeviceSession();
+	}
 
 	await BleClient.connect(deviceId, () => {
 		console.log(`[BLE] Device ${deviceId} disconnected`);
+		markSessionDisconnected(deviceId);
 	});
+	sessionDeviceId = deviceId;
 
 	try {
 		const unixTimestampSeconds = Math.floor(Date.now() / 1000);
@@ -319,16 +376,17 @@ export async function downloadSensorSnapshot<T>(device: BleDevice): Promise<Sens
 		const wheelSize = await readConnectedStringCharacteristic(deviceId, WHEEL_SIZE_UUID, 'wheel size');
 		const descriptor = await downloadTripsConnected<T>(deviceId);
 
-		return {
+		const snapshot = {
 			descriptor,
 			wheelSize,
 			battery: parseBatteryInfo(deviceId, batteryValue)
 		};
+		completed = true;
+		startSessionTimeout(deviceId);
+		return snapshot;
 	} finally {
-		try {
-			await BleClient.disconnect(deviceId);
-		} catch {
-			// Ignore disconnect errors
+		if (!completed) {
+			await disconnectDeviceSession(deviceId);
 		}
 	}
 }

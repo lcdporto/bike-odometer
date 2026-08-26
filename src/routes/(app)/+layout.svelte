@@ -7,7 +7,7 @@
 	import { sensorState } from '$lib/stores/sensor.svelte';
 	import { bleDevicesState } from '$lib/stores/ble-devices.svelte';
 	import type { Sensor } from '$lib/stores/sensor.svelte';
-	import { writeWheelSizeDescriptor } from '$lib/services/ble';
+	import { disconnectDeviceSession, writeWheelSizeDescriptor } from '$lib/services/ble';
 	import { saveSensorWheelSize } from '$lib/persistence/sqlite';
 	import { initializeAppDataFromSensors } from '$lib/state/app-state';
 	import { WHEEL_SIZES, DEFAULT_WHEEL_SIZE } from '$lib/config/wheels';
@@ -31,9 +31,14 @@
 		wheelSize = sensorState.wheelSize;
 	});
 
-	onMount(async () => {
-		await initializeAppDataFromSensors();
-		isInitializing = false;
+	onMount(() => {
+		void initializeAppDataFromSensors().finally(() => {
+			isInitializing = false;
+		});
+
+		return () => {
+			void disconnectDeviceSession();
+		};
 	});
 
 	$effect(() => {
@@ -65,7 +70,8 @@
 		}
 	}
 
-	function handleDisconnect() {
+	async function handleDisconnect() {
+		await disconnectDeviceSession(connectedSensor?.id);
 		sensorState.disconnectSensor();
 		goto(resolve('/pairing'));
 	}
