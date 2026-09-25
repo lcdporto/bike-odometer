@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Bike Sensor</string>
+    <string name="title_activity_main">Bike Sensor</string>
+    <string name="package_name">dev.tteles.bikesensor</string>
+    <string name="custom_url_scheme">dev.tteles.bikesensor</string>
+</resources>

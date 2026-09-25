@@ -1,0 +1,15 @@
+{
+	"appId": "dev.tteles.bikesensor",
+	"appName": "Bike Sensor",
+	"webDir": "build",
+	"plugins": {
+		"CapacitorHttp": {},
+		"Keyboard": {
+			"resize": "none"
+		},
+		"CapacitorSQLite": {}
+	},
+	"ios": {
+		"scheme": "bikesensor"
+	}
+}

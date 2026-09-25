@@ -1,0 +1,95 @@
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+export function cn(...inputs: ClassValue[]) {
+	return twMerge(clsx(inputs));
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type WithoutChild<T> = T extends { child?: any } ? Omit<T, "child"> : T;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type WithoutChildren<T> = T extends { children?: any } ? Omit<T, "children"> : T;
+export type WithoutChildrenOrChild<T> = WithoutChildren<WithoutChild<T>>;
+export type WithElementRef<T, U extends HTMLElement = HTMLElement> = T & { ref?: U | null };
+
+/**
+ * Format a Date to 24-hour time string (HH:MM)
+ */
+export function formatTime24h(date: Date): string {
+	return date.toLocaleTimeString('en-GB', { 
+		hour: '2-digit', 
+		minute: '2-digit', 
+		hour12: false 
+	});
+}
+
+/**
+ * Calculate wheel circumference in meters from diameter in inches
+ */
+export function getWheelCircumference(diameterInches: string | number): number {
+	const parsed = typeof diameterInches === 'string' 
+		? Number.parseInt(diameterInches, 10) 
+		: diameterInches;
+	// Convert diameter in inches to circumference in meters
+	// diameter (inches) × π × 0.0254 (inches to meters)
+	return Number.isFinite(parsed) ? (parsed * Math.PI * 0.0254) : 0;
+}
+
+/**
+ * Calculate distance in kilometers from rotations and wheel circumference
+ */
+export function calculateDistance(rotations: number, wheelCircumferenceMeters: number): number {
+	return (rotations * wheelCircumferenceMeters) / 1000;
+}
+
+/**
+ * Format distance in kilometers to fixed decimal places
+ */
+export function formatDistanceKm(km: number, decimals: number = 2): string {
+	return km.toFixed(decimals);
+}
+
+/**
+ * Format a duration in minutes to d/h/m (e.g. 1d 12h 6m)
+ */
+export function formatDurationDhm(totalMinutes: number): string {
+	const safeMinutes = Math.max(0, Math.floor(totalMinutes));
+	const days = Math.floor(safeMinutes / (24 * 60));
+	const hours = Math.floor((safeMinutes % (24 * 60)) / 60);
+	const minutes = safeMinutes % 60;
+
+	const parts: string[] = [];
+	if (days > 0) {
+		parts.push(`${days}d`);
+	}
+	if (hours > 0 || days > 0) {
+		parts.push(`${hours}h`);
+	}
+	if (minutes > 0 || parts.length === 0) {
+		parts.push(`${minutes}m`);
+	}
+
+	return parts.join(' ');
+}
+
+/**
+ * Detect whether a BLE device name is missing or just a placeholder label
+ */
+export function isPlaceholderDeviceName(name: string | null | undefined): boolean {
+	if (!name) return true;
+	const trimmed = name.trim();
+	if (!trimmed) return true;
+	const normalized = trimmed.toLowerCase();
+	return normalized === '(unnamed)' || normalized === 'unnamed' || normalized === 'unknown';
+}
+
+/**
+ * Return a stable display label for BLE devices
+ */
+export function resolveDisplaySensorName(name: string | null | undefined, id: string): string {
+	if (!isPlaceholderDeviceName(name)) {
+		return name!.trim();
+	}
+
+	return id;
+}
