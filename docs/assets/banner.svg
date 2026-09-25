@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="title desc">
+  <title id="title">Bike Odometer — Every rotation counts.</title>
+  <desc id="desc">Bicycle and gauge emblem with mint lettering on a dark navy background.</desc>
+  <defs>
+    <linearGradient id="bg" x2="1" y2="1">
+      <stop stop-color="#102b36"/>
+      <stop offset="1" stop-color="#081b24"/>
+    </linearGradient>
+    <pattern id="grid" width="36" height="36" patternUnits="userSpaceOnUse">
+      <path d="M36 0H0v36" fill="none" stroke="#8ce9bc" stroke-opacity=".045"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="360" rx="24" fill="url(#bg)"/>
+  <rect width="1200" height="360" rx="24" fill="url(#grid)"/>
+  <circle cx="1130" cy="320" r="200" fill="none" stroke="#8ce9bc" stroke-opacity=".06" stroke-width="50"/>
+  <g transform="translate(47 52)">
+    <path d="M57 100a82 82 0 0 1 142 0" fill="none" stroke="#34505a" stroke-width="9" stroke-linecap="round"/>
+    <path d="M128 59a82 82 0 0 1 71 41" fill="none" stroke="#8ce9bc" stroke-width="9" stroke-linecap="round"/>
+    <path d="m128 105 28-30" stroke="#f5d17c" stroke-width="7" stroke-linecap="round"/>
+    <g fill="none" stroke="#8ce9bc" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="67" cy="165" r="32"/>
+      <circle cx="190" cy="165" r="32"/>
+      <path d="m67 165 35-58 33 58H67l27-44h77m-36 44 36-44 19 44m-19-44-8-23h-18m-51 9h23"/>
+    </g>
+    <circle cx="135" cy="165" r="6" fill="#f5d17c"/>
+  </g>
+  <g font-family="DejaVu Sans, Arial, sans-serif">
+    <text x="345" y="106" fill="#8ce9bc" font-size="13" font-weight="700" letter-spacing="3">HARDWARE / FIRMWARE / ANDROID</text>
+    <text x="340" y="183" fill="#f0f7f5" font-size="64" font-weight="700" letter-spacing="-2">Bike Odometer</text>
+    <text x="345" y="229" fill="#b2c7cc" font-size="25">Every rotation counts.</text>
+    <path d="M345 266h48" stroke="#f5d17c" stroke-width="4" stroke-linecap="round"/>
+    <text x="409" y="272" fill="#8faab3" font-size="14" letter-spacing="1">RIDE. RECORD. RECONNECT.</text>
+  </g>
+</svg>

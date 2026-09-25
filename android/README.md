@@ -1,5 +1,21 @@
 # sv
 
+## Project branding
+
+The app uses the shared [Bike Odometer logo](../docs/assets/logo.svg) for its
+header, favicon, Android launcher icons, and splash screens. After editing the
+logo, regenerate the bundled assets from this directory:
+
+```sh
+python3 scripts/generate-branding.py
+```
+
+This requires Python 3, Pillow, and `rsvg-convert` (librsvg). Generated assets are
+checked in, so normal app builds do not need these tools. The generator updates
+Android resources only; it does not regenerate the native iOS asset catalog.
+
+---
+
 Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
 
 ## Creating a project
@@ -38,6 +54,16 @@ You can preview the production build with `npm run preview`.
 > To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
 
 ## Android release signing
+
+Release APKs can be attached directly to a GitHub release. Set
+`PUBLIC_BACKEND_API_URL` in `.env.local` before building; the deployed backend
+used by the app is `https://bike-odometer.lcdporto.org`.
+
+Keep a secure backup of `android/key.keystore` and `.keys/android-signing.env`.
+Both are ignored by Git. Future releases must use the same signing key to update
+an installed app without uninstalling it. Never attach these signing files to a
+release. Increase `versionCode` and update `versionName` in
+`android/app/build.gradle` for subsequent releases.
 
 This project is configured like `gira-mais` CI for release signing:
 

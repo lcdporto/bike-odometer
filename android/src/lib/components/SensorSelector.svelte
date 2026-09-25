@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Sensor } from '$lib/stores/sensor.svelte';
+	import logo from '$lib/assets/favicon.svg';
 	import { Bluetooth, BluetoothSearching, Loader2, Signal, SignalLow, SignalMedium, Clock } from '@lucide/svelte';
 	import { getAllSensors } from '$lib/persistence/sqlite';
 	import { waitForSensorData } from '$lib/services/ble-background';
@@ -96,9 +97,7 @@
 		style:padding-top="max(env(safe-area-inset-top), 16px)"
 		class="flex items-center justify-center border-b border-border px-4 py-4">
 		<div class="flex items-center gap-3">
-			<div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-				<Bluetooth class="h-5 w-5 text-primary" />
-			</div>
+			<img src={logo} alt="Bike Odometer" class="h-10 w-10 shrink-0" />
 			<h1 class="text-lg font-bold text-foreground">Connect Sensor</h1>
 		</div>
 	</header>

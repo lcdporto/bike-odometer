@@ -25,7 +25,7 @@
 	<link rel="icon" href={favicon} />
 	<title>Bike Counter</title>
 	<meta name="description" content="Track your cycling distance and statistics" />
-	<meta name="theme-color" content="#1a1a2e" />
+	<meta name="theme-color" content="#102b36" />
 </svelte:head>
 
 <Toaster/>

@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { Bike, Bluetooth, BarChart3, Battery, History } from '@lucide/svelte';
+	import { Bluetooth, BarChart3, Battery, History } from '@lucide/svelte';
+	import logo from '$lib/assets/favicon.svg';
 	import { Select, SelectContent, SelectItem, SelectTrigger } from '$lib/components/ui/select';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -85,9 +86,7 @@
 		style:padding-top="max(env(safe-area-inset-top), 12px)"
 		class="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
 		<div class="flex items-center gap-2">
-			<div class="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
-				<Bike class="h-5 w-5 text-primary" />
-			</div>
+			<img src={logo} alt="Bike Odometer" class="h-9 w-9 shrink-0" />
 			<div>
 				<h1 class="text-base font-bold tracking-tight text-foreground">Bike Counter</h1>
 				<button
