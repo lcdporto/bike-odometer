@@ -119,3 +119,15 @@ exports using KiBot.
 - **[App development](android/README.md)** — local builds and Android signing.
 - **[BLE integration](firmware/docs/android-ble-spec.md)** — protocol reference for client developers.
 - **[Project logo](docs/assets/logo.svg)** — scalable bicycle-and-gauge artwork.
+
+## Licensing
+
+| Directory | License |
+| --- | --- |
+| `hardware/` | [CERN-OHL-W-2.0](hardware/LICENSE) |
+| `firmware/` | [GPL-3.0-or-later](firmware/LICENSE) |
+| `android/` | [GPL-3.0-or-later](android/LICENSE) |
+| `libraries/` | [LGPL-3.0-or-later](libraries/LICENSE) |
+| `docs/` | [CC-BY-SA-4.0](docs/LICENSE) |
+
+See [Project licensing](LICENSE.md) for scope and existing third-party notices.
